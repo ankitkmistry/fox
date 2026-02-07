@@ -1,0 +1,38 @@
+AlignConsecutiveBitFields: AcrossEmptyLines
+AlignOperands: Align
+AlignEscapedNewlines: Right
+
+
+ColumnLimit: 150
+ContinuationIndentWidth: 8
+
+IndentCaseBlocks: false
+IndentCaseLabels: false
+IndentExternBlock: Indent
+IndentGotoLabels: false
+IndentPPDirectives: AfterHash
+IndentWidth: 4
+
+MaxEmptyLinesToKeep: 2
+PointerAlignment: Right
+ReflowComments: false
+SeparateDefinitionBlocks: Always
+
+
+SpaceAfterCStyleCast: true
+SpaceAfterLogicalNot: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeCaseColon: false
+SpaceBeforeParens: ControlStatements
+SpaceBeforeSquareBrackets: false
+SpaceInEmptyBlock: false
+SpaceInEmptyParentheses: false
+SpacesInContainerLiterals: false
+SpacesInLineCommentPrefix:
+  Minimum: 1
+  Maximum: -1
+SpacesInSquareBrackets: false
+
+TabWidth: 4
+UseTab: Never
+UseCRLF: false
