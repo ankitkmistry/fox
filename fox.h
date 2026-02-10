@@ -517,7 +517,7 @@ typedef enum {
 } FoxFilePerms;
 
 typedef struct {
-    FoxFileType file_type;
+    FoxFileType type;
     size_t size;
     FoxFilePerms perms;
     time_t last_modified; //< in seconds
@@ -872,7 +872,7 @@ FoxStringBuf fox_sb_from_sv(const FoxStringView sv) {
     return sb;
 }
 
-void fox_sb_copy(FoxStringBuf *dest, const FoxStringView src){
+void fox_sb_copy(FoxStringBuf *dest, const FoxStringView src) {
     if (src.size == 0) {
         dest->size = 0;
         return;
@@ -1015,9 +1015,17 @@ bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb) {
 
 #if defined(FOX_OS_POSIX)
     bool result;
+    char *buf = NULL;
+    fox_da_clear(sb);
 
-    const size_t buf_size = fox_fs_file_size(path);
-    char *buf = malloc(buf_size + 1);
+    FoxFileStatus status;
+    if (!fox_fs_symlink_status(path, &status))
+        fox_return_defer(false);
+    if (status.type != FILE_SYMLINK)
+        fox_return_defer(false);
+
+    const size_t buf_size = status.size;
+    buf = malloc(buf_size + 1);
     ssize_t len = readlink(path, buf, buf_size + 1);
 
     if (len == -1)
@@ -1064,7 +1072,7 @@ bool fox_fs_file_status(const char *path, FoxFileStatus *status) {
         return false;
 
     // Get the file type
-    status->file_type = fox__fs_file_type__posix(file_info.st_mode);
+    status->type = fox__fs_file_type__posix(file_info.st_mode);
     status->size = file_info.st_size;
     status->perms = (FoxFilePerms) (file_info.st_mode & PERM_MASK);
     status->last_modified = file_info.st_mtime;
@@ -1085,7 +1093,7 @@ bool fox_fs_symlink_status(const char *path, FoxFileStatus *status) {
         return false;
 
     // Get the file type
-    status->file_type = fox__fs_file_type__posix(file_info.st_mode);
+    status->type = fox__fs_file_type__posix(file_info.st_mode);
     status->size = file_info.st_size;
     status->perms = (FoxFilePerms) (file_info.st_mode & PERM_MASK);
     status->last_modified = file_info.st_mtime;
@@ -1099,7 +1107,7 @@ bool fox_fs_symlink_status(const char *path, FoxFileStatus *status) {
 FoxFileType fox_fs_file_type(const char *path) {
     FoxFileStatus status;
     if (fox_fs_file_status(path, &status))
-        return status.file_type;
+        return status.type;
     return FILE_UNKNOWN;
 }
 
@@ -1222,7 +1230,7 @@ bool fox_fs_is_socket(const char *path) { return fox_fs_file_type(path) == FILE_
 bool fox_fs_is_symlink(const char *path) {
     FoxFileStatus status;
     if (fox_fs_symlink_status(path, &status))
-        return status.file_type == FILE_SYMLINK;
+        return status.type == FILE_SYMLINK;
     return false;
 }
 
