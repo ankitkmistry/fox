@@ -582,6 +582,7 @@ const char *fox_get_error_message(void);
 
 typedef enum {
     LOG_TRACE,
+    LOG_DEBUG,
     LOG_INFO,
     LOG_WARNING,
     LOG_ERROR,
@@ -627,6 +628,7 @@ void fox_logger_vlog_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, 
 void fox_logger_log_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, ...);
 #define fox_logger_log(logger, level, fmt, ...) fox_logger_log_ext((logger), (level), (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
 #define fox_logger_log_trace(logger, fmt, ...) fox_logger_log_ext((logger), LOG_TRACE, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define fox_logger_log_debug(logger, fmt, ...) fox_logger_log_ext((logger), LOG_DEBUG, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
 #define fox_logger_log_info(logger, fmt, ...) fox_logger_log_ext((logger), LOG_INFO, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
 #define fox_logger_log_warning(logger, fmt, ...) fox_logger_log_ext((logger), LOG_WARNING, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
 #define fox_logger_log_error(logger, fmt, ...) fox_logger_log_ext((logger), LOG_ERROR, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
@@ -642,6 +644,7 @@ void fox_vlog_ext(FoxLogLevel level, const char *fmt, const char *path, size_t l
 void fox_log_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, ...);
 #define fox_log(level, fmt, ...) fox_log_ext((level), (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
 #define fox_log_trace(fmt, ...) fox_log(LOG_TRACE, (fmt), ##__VA_ARGS__)
+#define fox_log_debug(fmt, ...) fox_log(LOG_DEBUG, (fmt), ##__VA_ARGS__)
 #define fox_log_info(fmt, ...) fox_log(LOG_INFO, (fmt), ##__VA_ARGS__)
 #define fox_log_warning(fmt, ...) fox_log(LOG_WARNING, (fmt), ##__VA_ARGS__)
 #define fox_log_error(fmt, ...) fox_log(LOG_ERROR, (fmt), ##__VA_ARGS__)
@@ -1331,6 +1334,9 @@ bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level
     case LOG_TRACE:
         level_str = "TRACE";
         break;
+    case LOG_DEBUG:
+        level_str = "\033[32mDEBUG\033[0m";
+        break;
     case LOG_INFO:
         level_str = "\033[34mINFO\033[0m";
         break;
@@ -1965,7 +1971,7 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
     FoxFd stdin_fd = FOX_INVALID_FD;
     FoxFd stdout_fd = FOX_INVALID_FD;
     FoxFd stderr_fd = FOX_INVALID_FD;
-    mode_t create_mode = PERM_OWNER_READ | PERM_OWNER_WRITE | PERM_GROUP_READ | PERM_GROUP_WRITE | PERM_OTHERS_READ | PERM_OTHERS_WRITE;
+    mode_t create_mode = PERM_OWNER_READ | PERM_OWNER_WRITE | PERM_GROUP_READ | PERM_OTHERS_READ;
     if (opt.stdin_path) {
         stdin_fd = open(opt.stdin_path, O_RDWR);
         if (stdin_fd == FOX_INVALID_FD)
