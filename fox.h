@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads.h>
 
 /// General helping utils
 /// - i8
@@ -121,6 +122,48 @@
 ///   TODO: do something about error reporting
 ///   fox_get_error_message
 ///
+/// Logging system
+///   Internal functions
+///   - fox__init_def_log__
+///
+///   Definitions
+///   - FoxLogLevel
+///   - FoxLogHandlerFn
+///   - FoxSinkWriteFn
+///   - FoxSinkCloseFn
+///   - FoxSink
+///   - FoxSinks
+///   - FoxLogger
+///
+///   Logger functions
+///   - fox_logger_file_sink
+///   - fox_logger_handler
+///   - fox_logger_min_level
+///   - fox_logger_free
+///   - fox_logger_vlog_ext
+///   - fox_logger_vlog
+///   - fox_logger_log_ext
+///   - fox_logger_log
+///   - fox_logger_log_trace
+///   - fox_logger_log_info
+///   - fox_logger_log_warning
+///   - fox_logger_log_error
+///   - fox_logger_log_critical
+///
+///   Default logger functions
+///   - fox_default_logger
+///   - fox_default_log_handler
+///   - fox_default_log_write
+///   - fox_vlog_ext
+///   - fox_vlog
+///   - fox_log_ext
+///   - fox_log
+///   - fox_log_trace
+///   - fox_log_info
+///   - fox_log_warning
+///   - fox_log_error
+///   - fox_log_critical
+///
 /// Filesystem utils
 ///   Convenience functions
 ///   - fox_fs_read_entire_file
@@ -177,7 +220,7 @@
 ///   - FoxFd
 ///   - FOX_INVALID_FD
 ///
-///   Process managing functions 
+///   Process managing functions
 ///   - FoxProc
 ///   - FoxProcs
 ///   - FoxSpawnOpt
@@ -479,6 +522,7 @@ FoxStringView fox_sv_from_sb(const FoxStringBuf sb);
 // Modification
 void fox_sb_append_null(FoxStringBuf *sb);
 void fox_sb_appendf(FoxStringBuf *sb, const char *fmt, ...) FOX_PRINTF_FORMAT(2, 3);
+void fox_sb_vappendf(FoxStringBuf *sb, const char *fmt, va_list args);
 
 void fox_sb_concat_sb(FoxStringBuf *sb, const FoxStringBuf *other);
 void fox_sb_concat_sv(FoxStringBuf *sb, const FoxStringView other);
@@ -534,6 +578,75 @@ void fox_sb_toupper(FoxStringBuf *sb);
 
 const char *fox_get_error_message(void);
 
+// Log utils
+
+typedef enum {
+    LOG_TRACE,
+    LOG_INFO,
+    LOG_WARNING,
+    LOG_ERROR,
+    LOG_CRITICAL,
+    LOG_NO_LOGS,
+} FoxLogLevel;
+
+struct FoxLogSink;
+
+typedef bool (*FoxLogHandlerFn)(struct FoxLogSink *sink, FoxStringBuf *buf, FoxLogLevel level, const char *fmt, const char *path, size_t line,
+                                va_list args);
+typedef void (*FoxSinkWriteFn)(struct FoxLogSink *sink, const FoxStringView sv);
+typedef void (*FoxSinkCloseFn)(struct FoxLogSink *sink);
+
+typedef struct FoxLogSink {
+    // TODO: add support for log patterns (like in spdlog)
+    void *handle;
+    FoxLogLevel min_level;
+
+    FoxLogHandlerFn log_handler;
+    FoxSinkWriteFn sink_write;
+    FoxSinkCloseFn sink_close;
+} FoxSink;
+
+typedef struct {
+    FoxSink *items;
+    size_t size;
+    size_t capacity;
+} FoxSinks;
+
+typedef struct {
+    FoxSinks sinks;
+} FoxLogger;
+
+FoxSink fox_logger_file_sink(const char *path);
+
+void fox_logger_handler(FoxLogger *logger, FoxLogHandlerFn handler);
+void fox_logger_min_level(FoxLogger *logger, FoxLogLevel level);
+void fox_logger_free(FoxLogger *logger);
+
+void fox_logger_vlog_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
+#define fox_logger_vlog(logger, level, fmt, args) fox_logger_vlog_ext((logger), (level), (fmt), __FILE__, __LINE__, (args))
+void fox_logger_log_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, ...);
+#define fox_logger_log(logger, level, fmt, ...) fox_logger_log_ext((logger), (level), (fmt), __FILE__, __LINE__, __VA_ARGS__)
+#define fox_logger_log_trace(logger, fmt, ...) fox_logger_log_ext((logger), LOG_TRACE, (fmt), __FILE__, __LINE__, __VA_ARGS__)
+#define fox_logger_log_info(logger, fmt, ...) fox_logger_log_ext((logger), LOG_INFO, (fmt), __FILE__, __LINE__, __VA_ARGS__)
+#define fox_logger_log_warning(logger, fmt, ...) fox_logger_log_ext((logger), LOG_WARNING, (fmt), __FILE__, __LINE__, __VA_ARGS__)
+#define fox_logger_log_error(logger, fmt, ...) fox_logger_log_ext((logger), LOG_ERROR, (fmt), __FILE__, __LINE__, __VA_ARGS__)
+#define fox_logger_log_critical(logger, fmt, ...) fox_logger_log_ext((logger), LOG_CRITICAL, (fmt), __FILE__, __LINE__, __VA_ARGS__)
+
+extern FoxLogger fox_default_logger;
+void fox__init_def_log__(void);
+bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
+void fox_default_log_write(FoxSink *sink, const FoxStringView sv);
+
+void fox_vlog_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
+#define fox_vlog(level, fmt, args) fox_logger_vlog_ext((level), (fmt), __FILE__, __LINE__, (args))
+void fox_log_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, ...);
+#define fox_log(level, fmt, ...) fox_logger_log_ext((level), (fmt), __FILE__, __LINE__, __VA_ARGS__)
+#define fox_log_trace(fmt, ...) fox_log(LOG_TRACE, (fmt), __VA_ARGS__)
+#define fox_log_info(fmt, ...) fox_log(LOG_INFO, (fmt), __VA_ARGS__)
+#define fox_log_warning(fmt, ...) fox_log(LOG_WARNING, (fmt), __VA_ARGS__)
+#define fox_log_error(fmt, ...) fox_log(LOG_ERROR, (fmt), __VA_ARGS__)
+#define fox_log_critical(fmt, ...) fox_log(LOG_CRITICAL, (fmt), __VA_ARGS__)
+
 // Filesystem utils
 
 bool fox_fs_read_entire_file(const char *path, FoxStringBuf *sb);
@@ -566,10 +679,6 @@ typedef enum {
     PERM_OTHERS_EXEC = 01,
     PERM_OTHERS_ALL = PERM_OTHERS_READ | PERM_OTHERS_WRITE | PERM_OTHERS_EXEC,
     PERM_ALL = PERM_OWNER_ALL | PERM_GROUP_ALL | PERM_OTHERS_ALL,
-    PERM_SET_UID = 04000,
-    PERM_SET_GID = 02000,
-    PERM_STICKY_BIT = 01000,
-    PERM_MASK = PERM_ALL | PERM_SET_UID | PERM_SET_GID | PERM_STICKY_BIT,
 } FoxFilePerms;
 
 typedef struct {
@@ -1061,7 +1170,11 @@ void fox_sb_append_null(FoxStringBuf *sb) {
 void fox_sb_appendf(FoxStringBuf *sb, const char *fmt, ...) {
     va_list args;
     va_start(args, fmt);
+    fox_sb_vappendf(sb, fmt, args);
+    va_end(args);
+}
 
+void fox_sb_vappendf(FoxStringBuf *sb, const char *fmt, va_list args) {
     va_list args_for_size_computation;
     va_copy(args_for_size_computation, args);
     int n = vsnprintf(NULL, 0, fmt, args_for_size_computation);
@@ -1071,8 +1184,6 @@ void fox_sb_appendf(FoxStringBuf *sb, const char *fmt, ...) {
 
     fox_da_reserve(sb, sb->size + n + 1);
     vsnprintf(&sb->items[sb->size], n + 1, fmt, args);
-    va_end(args);
-
     sb->size += n;
     sb->items[sb->size] = '\0';
 }
@@ -1120,6 +1231,157 @@ const char *fox_get_error_message(void) {
 #else
 #    error "Implement this"
 #endif
+}
+
+static void fox__file_sink_close__(FoxSink *sink) {
+    FILE *file = sink->handle;
+    fclose(file);
+}
+
+FoxSink fox_logger_file_sink(const char *path) {
+    FILE *file = fopen(path, "wb");
+    if (file == NULL)
+        return (FoxSink) {0};
+    return (FoxSink) {
+            .handle = file,
+            .log_handler = fox_default_log_handler,
+            .sink_write = fox_default_log_write,
+            .sink_close = fox__file_sink_close__,
+    };
+}
+
+void fox_logger_handler(FoxLogger *logger, FoxLogHandlerFn handler) {
+    if (!logger)
+        return;
+    fox_da_foreach(FoxSink, sink, &logger->sinks) sink->log_handler = handler;
+}
+
+void fox_logger_min_level(FoxLogger *logger, FoxLogLevel level) {
+    if (!logger)
+        return;
+    fox_da_foreach(FoxSink, sink, &logger->sinks) sink->min_level = level;
+}
+
+void fox_logger_free(FoxLogger *logger) {
+    if (!logger)
+        return;
+    fox_da_foreach(FoxSink, sink, &logger->sinks) {
+        if (sink->sink_close)
+            sink->sink_close(sink->handle);
+    }
+    fox_da_free(&logger->sinks);
+}
+
+void fox_logger_vlog_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args) {
+    if (!logger)
+        return;
+    fox_da_foreach(FoxSink, sink, &logger->sinks) {
+        va_list sink_args;
+        FoxStringBuf buf = {0};
+        bool will_write = false;
+
+        if (sink->log_handler) {
+            va_copy(sink_args, args);
+            will_write = sink->log_handler(sink, &buf, level, fmt, path, line, sink_args);
+            va_end(sink_args);
+        }
+        if (sink->sink_write && will_write)
+            sink->sink_write(sink->handle, fox_sv(buf));
+    }
+}
+
+void fox_logger_log_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, ...) {
+    va_list args;
+    va_start(args, line);
+    fox_logger_vlog_ext(logger, level, fmt, path, line, args);
+    va_end(args);
+}
+
+FoxLogger fox_default_logger = {0};
+static bool fox__def_log_init__ = false;
+static mtx_t fox__def_log_mtx__;
+
+static void fox__free_def_log__(void) { fox_logger_free(&fox_default_logger); }
+
+void fox__init_def_log__(void) {
+    if (!fox__def_log_init__) {
+        if (fox_default_logger.sinks.size == 0) {
+            FoxSink default_sink = {
+                    .handle = stderr,
+                    .log_handler = fox_default_log_handler,
+                    .sink_write = fox_default_log_write,
+                    .sink_close = NULL,
+            };
+            fox_da_append(&fox_default_logger.sinks, default_sink);
+        }
+        if (mtx_init(&fox__def_log_mtx__, mtx_plain) == thrd_error) {
+            perror("could not initialize mutex for fox_default_logger");
+            abort();
+        }
+        if (atexit(fox__free_def_log__) != 0) {
+            perror("could not register exit hook for fox_default_logger");
+            abort();
+        }
+        fox__def_log_init__ = true;
+    }
+}
+
+bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args) {
+    if (level < sink->min_level)
+        return false;
+
+    const char *level_str = NULL;
+    switch (level) {
+    case LOG_TRACE:
+        level_str = "trace";
+        break;
+    case LOG_INFO:
+        level_str = "\033[34minfo\033[0m";
+        break;
+    case LOG_WARNING:
+        level_str = "\033[93mwarning\033[0m";
+        break;
+    case LOG_ERROR:
+        level_str = "\033[31merror\033[0m";
+        break;
+    case LOG_CRITICAL:
+        level_str = "\033[101mcritical\033[0m";
+        break;
+    case LOG_NO_LOGS:
+        return false;
+    default:
+        FOX_UNREACHABLE("fox_default_log_handler");
+    }
+
+    FoxStringBuf fmt_buf = {0};
+    fox_sb_vappendf(&fmt_buf, fmt, args);
+
+    // fox_sb_appendf(buf, "[%s] %s:%d: %s\n", level_str, path, line, fmt_buf.items);
+    fox_sb_appendf(buf, "[%s] %s\n", level_str, fmt_buf.items);
+    fox_sb_free(&fmt_buf);
+    return true;
+}
+
+void fox_default_log_write(FoxSink *sink, const FoxStringView sv) {
+    if (sv.size == 0)
+        return;
+
+    FILE *file = sink->handle;
+    mtx_lock(&fox__def_log_mtx__);
+    fwrite(sv.items, sizeof(sv.items[0]), sv.size, file);
+    mtx_unlock(&fox__def_log_mtx__);
+}
+
+void fox_vlog_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args) {
+    fox__init_def_log__();
+    fox_logger_vlog_ext(&fox_default_logger, level, fmt, path, line, args);
+}
+
+void fox_log_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, ...) {
+    va_list args;
+    va_start(args, line);
+    fox_vlog_ext(level, fmt, path, line, args);
+    va_end(args);
 }
 
 bool fox_fs_read_entire_file(const char *path, FoxStringBuf *sb) {
@@ -1195,7 +1457,7 @@ bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb) {
     if (len == -1)
         fox_return_defer(false);
     buf[len] = '\0';
-    fox_sb_copy(sb, fox_sv_from_cstr(buf));
+    fox_sb_copy(sb, fox_sv(buf));
 
 defer:
     free(buf);
@@ -1238,7 +1500,7 @@ bool fox_fs_file_status(const char *path, FoxFileStatus *status) {
     // Get the file type
     status->type = fox__fs_file_type__posix(file_info.st_mode);
     status->size = file_info.st_size;
-    status->perms = (FoxFilePerms) (file_info.st_mode & PERM_MASK);
+    status->perms = (FoxFilePerms) (file_info.st_mode & PERM_ALL);
     status->last_modified = file_info.st_mtime;
     status->last_accessed = file_info.st_atime;
     return true;
@@ -1259,7 +1521,7 @@ bool fox_fs_symlink_status(const char *path, FoxFileStatus *status) {
     // Get the file type
     status->type = fox__fs_file_type__posix(file_info.st_mode);
     status->size = file_info.st_size;
-    status->perms = (FoxFilePerms) (file_info.st_mode & PERM_MASK);
+    status->perms = (FoxFilePerms) (file_info.st_mode & PERM_ALL);
     status->last_modified = file_info.st_mtime;
     status->last_accessed = file_info.st_atime;
     return true;
@@ -1505,7 +1767,7 @@ bool fox_fs_create_dir(const char *path) {
 }
 
 bool fox_fs_create_dir_all(const char *p) {
-    const FoxStringView path = fox_sv_from_cstr(p);
+    const FoxStringView path = fox_sv(p);
     if (path.size == 0)
         return false;
     if (fox_fs_exists(p))
@@ -1516,7 +1778,7 @@ bool fox_fs_create_dir_all(const char *p) {
 
     for (size_t i = 0; i < path.size; i++) {
         path_rem = fox_str_slice(&path, i, path.size);
-        i = i + fox_str_find_first_of(&path_rem, fox_sv_from_cstr(FOX_FILE_SEPARATOR));
+        i = i + fox_str_find_first_of(&path_rem, fox_sv(FOX_FILE_SEPARATOR));
 
         fox_sb_copy(&split, fox_str_slice(&path, 0, i));
         if (split.size == 0)
