@@ -290,6 +290,8 @@
 #    define FOX_FILE_SEPARATOR "/"
 #endif
 
+// #define FOX_NO_ECHO
+
 // Useful typedefs
 typedef int8_t i8;
 typedef int16_t i16;
@@ -378,12 +380,12 @@ FoxReallocFn fox_realloc = fox__realloc__;
 
 #define fox_da_copy(dest, src)                                                                                                                       \
     do {                                                                                                                                             \
-        fox_da_free((dest));                                                                                                                         \
         (dest)->size = (src)->size;                                                                                                                  \
         (dest)->capacity = (src)->capacity;                                                                                                          \
         FOX_ASSERT(fox_realloc != NULL, "fox_realloc cannot be NULL");                                                                               \
         (dest)->items = fox_realloc((dest)->items, (dest)->capacity * sizeof((dest)->items[0]));                                                     \
-        memcpy((dest)->items, (src)->items, (dest)->size * sizeof((dest)->items[0]));                                                                \
+        if ((src)->items)                                                                                                                            \
+            memcpy((dest)->items, (src)->items, (src)->size * sizeof((src)->items[0]));                                                              \
     } while (false)
 
 #define fox_da_clear(arr)                                                                                                                            \
@@ -511,7 +513,7 @@ FoxStringBuf fox_sb_clone(const FoxStringBuf *sb);
 void fox_sb_copy(FoxStringBuf *dest, const FoxStringView src);
 void fox_sb_free(FoxStringBuf *sb);
 
-#define fox_sb(expr) _Generic((expr), char *: fox_sb_from_cstr, const char *: fox_sb_from_cstr, FoxStringBuf: fox_sb_from_sv)(expr)
+#define fox_sb(expr) _Generic((expr), char *: fox_sb_from_cstr, const char *: fox_sb_from_cstr, FoxStringView: fox_sb_from_sv)(expr)
 
 FoxStringView fox_sv_from_raw(const char *str, size_t count);
 FoxStringView fox_sv_from_cstr(const char *str);
@@ -527,7 +529,7 @@ void fox_sb_vappendf(FoxStringBuf *sb, const char *fmt, va_list args);
 void fox_sb_concat_sb(FoxStringBuf *sb, const FoxStringBuf *other);
 void fox_sb_concat_sv(FoxStringBuf *sb, const FoxStringView other);
 void fox_sb_concat_cstr(FoxStringBuf *sb, const char *str);
-#define fox_sv_concat(sb, other)                                                                                                                     \
+#define fox_sb_concat(sb, other)                                                                                                                     \
     _Generic(other,                                                                                                                                  \
             FoxStringBuf *: fox_sb_concat_sb,                                                                                                        \
             const FoxStringBuf *: fox_sb_concat_sb,                                                                                                  \
@@ -635,7 +637,6 @@ void fox_logger_log_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, c
 #define fox_logger_log_critical(logger, fmt, ...) fox_logger_log_ext((logger), LOG_CRITICAL, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
 
 extern FoxLogger fox_default_logger;
-void fox__init_def_log__(void);
 bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
 void fox_default_log_write(FoxSink *sink, const FoxStringView sv);
 
@@ -784,7 +785,6 @@ typedef struct {
 } FoxProcs;
 
 typedef struct {
-    // TODO: implement paths
     const char *stdin_path;
     const char *stdout_path;
     const char *stderr_path;
@@ -795,6 +795,12 @@ typedef struct {
 bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews argv, const FoxSpawnOpt opt);
 #define fox_cmd_spawn(process, path, argv, ...)                                                                                                      \
     fox_cmd_spawn_opt(                                                                                                                               \
+            (process), (path), (argv),                                                                                                               \
+            (const FoxSpawnOpt) {                                                                                                                    \
+                    .stdin_path = NULL, .stdout_path = NULL, .stderr_path = NULL, .working_dir = NULL, .working_dir = {0}, .env = {0}, __VA_ARGS__})
+bool fox_cmd_spawn_piped_opt(FoxProc *process, const char *path, const FoxStringViews argv, const FoxSpawnOpt opt);
+#define fox_cmd_spawn_piped(process, path, argv, ...)                                                                                                \
+    fox_cmd_spawn_piped_opt(                                                                                                                         \
             (process), (path), (argv),                                                                                                               \
             (const FoxSpawnOpt) {                                                                                                                    \
                     .stdin_path = NULL, .stdout_path = NULL, .stderr_path = NULL, .working_dir = NULL, .working_dir = {0}, .env = {0}, __VA_ARGS__})
@@ -821,7 +827,7 @@ typedef struct {
 } FoxCmd;
 
 void fox__cmd_append__(FoxCmd *cmd, size_t n, ...);
-#define fox_cmd_append(cmd, ...) fox__cmd_append__(cmd, sizeof((const char *[]) {__VA_ARGS__}) / sizeof(const char *), __VA_ARGS__)
+#define fox_cmd_append(cmd, ...) fox__cmd_append__(cmd, sizeof((const char *[]) {__VA_ARGS__}) / sizeof(const char *), ##__VA_ARGS__)
 void fox_cmd_extend(FoxCmd *cmd, FoxCmd *other);
 #define fox_cmd_free(cmd) fox_da_free(cmd)
 
@@ -1178,12 +1184,16 @@ void fox_sb_vappendf(FoxStringBuf *sb, const char *fmt, va_list args) {
     int n = vsnprintf(NULL, 0, fmt, args_for_size_computation);
     va_end(args_for_size_computation);
     if (n == -1)
-        FOX_PANIC("vsprintf failed");
+        FOX_PANIC("vsnprintf failed");
 
-    fox_da_reserve(sb, sb->size + n + 1);
-    vsnprintf(&sb->items[sb->size], n + 1, fmt, args);
-    sb->size += n;
-    sb->items[sb->size] = '\0';
+    FoxStringBuf tmp = fox_sb_clone(sb);
+    fox_da_reserve(&tmp, tmp.size + n + 1);
+    vsnprintf(&tmp.items[tmp.size], n + 1, fmt, args);
+    tmp.size += n;
+    tmp.items[tmp.size] = '\0';
+    fox_sb_copy(sb, fox_sv(tmp));
+
+    fox_sb_free(&tmp);
 }
 
 void fox_sb_concat_sb(FoxStringBuf *sb, const FoxStringBuf *other) { fox_da_concat(sb, other); }
@@ -1304,7 +1314,7 @@ static mtx_t fox__def_log_mtx__;
 
 static void fox__free_def_log__(void) { fox_logger_free(&fox_default_logger); }
 
-void fox__init_def_log__(void) {
+static void fox__init_def_log__(void) {
     if (!fox__def_log_init__) {
         FoxSink default_sink = {
                 .handle = stderr,
@@ -1845,7 +1855,7 @@ bool fox_fs_rename(const char *old_path, const char *new_path) {
 
 bool fox_fs_move(const char *old_path, const char *new_path) { return fox_fs_rename(old_path, new_path); }
 
-bool fox__fs_copy_file__(const char *from, const char *to) {
+static bool fox__fs_copy_file__(const char *from, const char *to) {
     bool result;
 
     // Copy file contents
@@ -1966,36 +1976,121 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
         return false;
 
 #if defined(FOX_OS_LINUX)
-    bool result;
+    mode_t create_mode = PERM_OWNER_READ | PERM_OWNER_WRITE | PERM_GROUP_READ | PERM_OTHERS_READ;
 
     FoxFd stdin_fd = FOX_INVALID_FD;
     FoxFd stdout_fd = FOX_INVALID_FD;
     FoxFd stderr_fd = FOX_INVALID_FD;
-    mode_t create_mode = PERM_OWNER_READ | PERM_OWNER_WRITE | PERM_GROUP_READ | PERM_OTHERS_READ;
     if (opt.stdin_path) {
-        stdin_fd = open(opt.stdin_path, O_RDWR);
+        stdin_fd = open(opt.stdin_path, O_RDONLY);
         if (stdin_fd == FOX_INVALID_FD)
-            fox_return_defer(false);
+            return false;
     }
     if (opt.stdout_path) {
-        stdout_fd = open(opt.stdout_path, O_RDWR | O_CREAT, create_mode);
+        stdout_fd = open(opt.stdout_path, O_WRONLY, create_mode);
         if (stdout_fd == FOX_INVALID_FD)
-            fox_return_defer(false);
+            return false;
     }
     if (opt.stderr_path) {
-        stderr_fd = open(opt.stderr_path, O_RDWR | O_CREAT, create_mode);
+        stderr_fd = open(opt.stdout_path, O_WRONLY, create_mode);
         if (stderr_fd == FOX_INVALID_FD)
-            fox_return_defer(false);
+            return false;
     }
+
+    FoxProcHandle pid = fork();
+    if (pid < 0)
+        return false;
+    if (pid == 0) {
+        // Redirect stdin/stdout/stderr
+        if (stdin_fd != FOX_INVALID_FD)
+            dup2(stdin_fd, STDIN_FILENO);
+        if (stdout_fd != FOX_INVALID_FD)
+            dup2(stdout_fd, STDOUT_FILENO);
+        if (stderr_fd != FOX_INVALID_FD)
+            dup2(stderr_fd, STDERR_FILENO);
+        // Close unused fds
+        close(stdin_fd);
+        close(stdout_fd);
+        close(stderr_fd);
+        // Change working directory
+        if (opt.working_dir.size != 0) {
+            FoxStringBuf tmp = fox_sb_from_sv(opt.working_dir);
+            if (fox_fs_setcwd(tmp.items)) {
+                fox_sb_free(&tmp);
+                _exit(127);
+            }
+            fox_sb_free(&tmp);
+        }
+        // The arena to store garbage
+        FoxStringBufs arena;
+        // Create the final args array
+        CStrs final_args = {0};
+        fox_da_append(&final_args, path);
+        fox_da_foreach(FoxStringView, it, &argv) {
+            fox_da_append(&arena, fox_sb_from_sv(*it));
+            fox_da_append(&final_args, fox_da_back(&arena).items);
+        }
+        fox_da_reserve(&final_args, final_args.size + 1);
+        final_args.items[final_args.size++] = NULL;
+        // Create the final env array
+        CStrs final_env = {0};
+        if (opt.env.size > 0) {
+            fox_da_foreach(FoxStringView, it, &opt.env) {
+                fox_da_append(&arena, fox_sb_from_sv(*it));
+                fox_da_append(&final_env, fox_da_back(&arena).items);
+            }
+            fox_da_reserve(&final_env, final_env.size + 1);
+            final_env.items[final_env.size++] = NULL;
+        }
+        // Now run the program
+        int ret;
+        if (final_env.size == 0)
+            ret = execvp(path, (char *const *) final_args.items);
+        else
+            ret = execve(path, (char *const *) final_args.items, (char *const *) final_env.items);
+        if (ret == -1) {
+            fox_da_free(&final_env);
+            fox_da_free(&final_args);
+            fox_da_foreach(FoxStringBuf, it, &arena) { fox_sb_free(it); }
+            fox_da_free(&arena);
+            return false;
+        }
+        _exit(127);
+    }
+
+    process->handle = pid;
+    process->stdin_fd = FOX_INVALID_FD;
+    process->stdout_fd = FOX_INVALID_FD;
+    process->stderr_fd = FOX_INVALID_FD;
+    process->running = true;
+    process->exit_code = 0;
+    return true;
+#else
+#    error "Implement this"
+#endif
+}
+
+bool fox_cmd_spawn_piped_opt(FoxProc *process, const char *path, const FoxStringViews argv, const FoxSpawnOpt opt) {
+    typedef struct {
+        const char **items;
+        size_t size;
+        size_t capacity;
+    } CStrs;
+
+    if (!path || strlen(path) == 0)
+        return false;
+
+#if defined(FOX_OS_LINUX)
+    bool result;
 
     FoxFd in_pipe[2] = {FOX_INVALID_FD, FOX_INVALID_FD};
     FoxFd out_pipe[2] = {FOX_INVALID_FD, FOX_INVALID_FD};
     FoxFd err_pipe[2] = {FOX_INVALID_FD, FOX_INVALID_FD};
-    if (stdin_fd == FOX_INVALID_FD && pipe(in_pipe) < 0)
+    if (pipe(in_pipe) < 0)
         fox_return_defer(false);
-    if (stdout_fd == FOX_INVALID_FD && pipe(out_pipe) < 0)
+    if (pipe(out_pipe) < 0)
         fox_return_defer(false);
-    if (stderr_fd == FOX_INVALID_FD && pipe(err_pipe) < 0)
+    if (pipe(err_pipe) < 0)
         fox_return_defer(false);
 
     FoxProcHandle pid = fork();
@@ -2003,30 +2098,16 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
         fox_return_defer(false);
     if (pid == 0) {
         // Redirect stdin/stdout/stderr
-        if (stdin_fd != FOX_INVALID_FD) {
-            dup2(stdin_fd, STDIN_FILENO);
-            close(stdin_fd);
-        } else {
-            dup2(in_pipe[0], STDIN_FILENO);
-            close(in_pipe[0]);
-            close(in_pipe[1]);
-        }
-        if (stdout_fd != FOX_INVALID_FD) {
-            dup2(stdout_fd, STDOUT_FILENO);
-            close(stdout_fd);
-        } else {
-            dup2(out_pipe[0], STDOUT_FILENO);
-            close(out_pipe[0]);
-            close(out_pipe[1]);
-        }
-        if (stderr_fd != FOX_INVALID_FD) {
-            dup2(stderr_fd, STDERR_FILENO);
-            close(stderr_fd);
-        } else {
-            dup2(err_pipe[0], STDERR_FILENO);
-            close(err_pipe[0]);
-            close(err_pipe[1]);
-        }
+        dup2(in_pipe[0], STDIN_FILENO);
+        dup2(out_pipe[0], STDOUT_FILENO);
+        dup2(err_pipe[0], STDERR_FILENO);
+        // Close unused fds
+        close(in_pipe[0]);
+        close(in_pipe[1]);
+        close(out_pipe[0]);
+        close(out_pipe[1]);
+        close(err_pipe[0]);
+        close(err_pipe[1]);
         // Change working directory
         if (opt.working_dir.size != 0) {
             FoxStringBuf tmp = fox_sb_from_sv(opt.working_dir);
@@ -2067,10 +2148,6 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
             fox_return_defer(false);
         }
         _exit(127);
-    } else {
-        // Parent process here
-        process->handle = pid;
-        fox_return_defer(true);
     }
 
     process->handle = pid;
@@ -2084,10 +2161,16 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
     close(out_pipe[1]);
     close(err_pipe[1]);
 
-    if (!fox__cmd_set_nonblocking_pipe__posix(process->stdin_fd) || !fox__cmd_set_nonblocking_pipe__posix(process->stdout_fd) ||
-        !fox__cmd_set_nonblocking_pipe__posix(process->stderr_fd))
-        return false;
-    return true;
+    if (process->stdin_fd != FOX_INVALID_FD)
+        if (!fox__cmd_set_nonblocking_pipe__posix(process->stdin_fd))
+            fox_return_defer(false);
+    if (process->stdout_fd != FOX_INVALID_FD)
+        if (!fox__cmd_set_nonblocking_pipe__posix(process->stdout_fd))
+            fox_return_defer(false);
+    if (process->stderr_fd != FOX_INVALID_FD)
+        if (!fox__cmd_set_nonblocking_pipe__posix(process->stderr_fd))
+            fox_return_defer(false);
+    fox_return_defer(true);
 
 defer:
     if (!result) {
@@ -2306,6 +2389,15 @@ void fox__cmd_append__(FoxCmd *cmd, size_t n, ...) {
 
 void fox_cmd_extend(FoxCmd *cmd, FoxCmd *other) { fox_da_concat(cmd, other); }
 
+static void fox__log_cmd__(const FoxCmd *cmd) {
+    FoxStringBuf buf = fox_sb("");
+    fox_da_foreach(const char *, str, cmd) { fox_sb_appendf(&buf, "%s ", *str); }
+    if (buf.size > 0)
+        fox_pop(&buf);
+    fox_log_info("[CMD] %s", buf.items);
+    fox_sb_free(&buf);
+}
+
 bool fox_cmd_run_opt(FoxCmd *cmd, FoxCmdOpt opt) {
     if (!cmd)
         return false;
@@ -2322,6 +2414,9 @@ bool fox_cmd_run_opt(FoxCmd *cmd, FoxCmdOpt opt) {
             fox_da_append(&env, fox_sv(opt.env[i]));
 
     FoxProc process = {0};
+#ifndef FOX_NO_ECHO
+    fox__log_cmd__(cmd);
+#endif
     bool ret = fox_cmd_spawn_opt(&process, path, args,
                                  (FoxSpawnOpt) {.stdin_path = opt.stdin_path,
                                                 .stdout_path = opt.stdout_path,
@@ -2333,6 +2428,8 @@ bool fox_cmd_run_opt(FoxCmd *cmd, FoxCmdOpt opt) {
     fox_return_defer(fox_cmd_wait(&process));
 
 defer:
+    fox_da_free(&args);
+    fox_da_free(&env);
     if (opt.reset)
         fox_da_clear(cmd);
     return result;

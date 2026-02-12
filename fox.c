@@ -72,6 +72,18 @@ int main() {
     fox_log_error("Log error");
     fox_log_critical("Log critical");
 
+    FoxCmd cmd = {0};
+
+    fox_cmd_append(&cmd, "ls", "--color", "-hal");
+    fox_cmd_run(&cmd);
+    fox_log_info("Process completed");
+
+    fox_cmd_append(&cmd, "gcc", "--version");
+    fox_cmd_run(&cmd);
+    fox_log_info("Process completed");
+
+    fox_cmd_free(&cmd);
+
     // Numbers numbers2 = {0};
     // fox_push(&numbers2, 1);
     // fox_push(&numbers2, 2);
