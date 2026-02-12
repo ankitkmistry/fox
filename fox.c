@@ -64,8 +64,12 @@ int main() {
     for (size_t i = 0; i < numbers1.size; i++) {
         printf("%hhd\n", numbers1.items[i]);
     }
-
-    fox_fs_create_dir_all("/home/ankit/Programming/fox/a/b/c");
+    
+    fox_log_trace("Log trace");
+    fox_log_info("Log info");
+    fox_log_warning("Log warning");
+    fox_log_error("Log error");
+    fox_log_critical("Log critical");
 
     // Numbers numbers2 = {0};
     // fox_push(&numbers2, 1);

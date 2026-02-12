@@ -255,15 +255,11 @@
 #if defined(__CYGWIN__) && !defined(_WIN32)
 #    define FOX_OS_WINDOWS /// Windows (Cygwin POSIX under Microsoft Windows)
 #endif
-#if defined(__unix__)
-#    define FOX_OS_UNIX /// Unix and Unix-like systems
-#endif
 #if defined(__linux__) || defined(__gnu_linux__) || defined(__ANDROID__)
 #    define FOX_OS_LINUX /// Debian, Ubuntu, Gentoo, Fedora, openSUSE, RedHat, Centos and other
 #endif
 #if defined(__APPLE__) && defined(__MACH__)
-#    define FOX_OS_UNIX /// Unix and Unix-like systems
-#    define FOX_OS_MAC  /// Apple OSX and iOS (Darwin)
+#    define FOX_OS_MAC /// Apple OSX and iOS (Darwin)
 #endif
 
 #if defined(__INTEL_COMPILER) || defined(__INTEL_LLVM_COMPILER)
@@ -282,6 +278,10 @@
 #else
 // Fallback for other compilers that don't support format checking
 #    define FOX_PRINTF_FORMAT(STRING_INDEX, FIRST_TO_CHECK)
+#endif
+
+#if defined(FOX_OS_LINUX) || defined(FOX_OS_UNIX) || defined(FOX_OS_MAC)
+#    include <sys/types.h>
 #endif
 
 #ifdef FOX_OS_WINDOWS
@@ -625,12 +625,12 @@ void fox_logger_free(FoxLogger *logger);
 void fox_logger_vlog_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
 #define fox_logger_vlog(logger, level, fmt, args) fox_logger_vlog_ext((logger), (level), (fmt), __FILE__, __LINE__, (args))
 void fox_logger_log_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, ...);
-#define fox_logger_log(logger, level, fmt, ...) fox_logger_log_ext((logger), (level), (fmt), __FILE__, __LINE__, __VA_ARGS__)
-#define fox_logger_log_trace(logger, fmt, ...) fox_logger_log_ext((logger), LOG_TRACE, (fmt), __FILE__, __LINE__, __VA_ARGS__)
-#define fox_logger_log_info(logger, fmt, ...) fox_logger_log_ext((logger), LOG_INFO, (fmt), __FILE__, __LINE__, __VA_ARGS__)
-#define fox_logger_log_warning(logger, fmt, ...) fox_logger_log_ext((logger), LOG_WARNING, (fmt), __FILE__, __LINE__, __VA_ARGS__)
-#define fox_logger_log_error(logger, fmt, ...) fox_logger_log_ext((logger), LOG_ERROR, (fmt), __FILE__, __LINE__, __VA_ARGS__)
-#define fox_logger_log_critical(logger, fmt, ...) fox_logger_log_ext((logger), LOG_CRITICAL, (fmt), __FILE__, __LINE__, __VA_ARGS__)
+#define fox_logger_log(logger, level, fmt, ...) fox_logger_log_ext((logger), (level), (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define fox_logger_log_trace(logger, fmt, ...) fox_logger_log_ext((logger), LOG_TRACE, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define fox_logger_log_info(logger, fmt, ...) fox_logger_log_ext((logger), LOG_INFO, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define fox_logger_log_warning(logger, fmt, ...) fox_logger_log_ext((logger), LOG_WARNING, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define fox_logger_log_error(logger, fmt, ...) fox_logger_log_ext((logger), LOG_ERROR, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define fox_logger_log_critical(logger, fmt, ...) fox_logger_log_ext((logger), LOG_CRITICAL, (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
 
 extern FoxLogger fox_default_logger;
 void fox__init_def_log__(void);
@@ -638,14 +638,14 @@ bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level
 void fox_default_log_write(FoxSink *sink, const FoxStringView sv);
 
 void fox_vlog_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
-#define fox_vlog(level, fmt, args) fox_logger_vlog_ext((level), (fmt), __FILE__, __LINE__, (args))
+#define fox_vlog(level, fmt, args) fox_vlog_ext((level), (fmt), __FILE__, __LINE__, (args))
 void fox_log_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, ...);
-#define fox_log(level, fmt, ...) fox_logger_log_ext((level), (fmt), __FILE__, __LINE__, __VA_ARGS__)
-#define fox_log_trace(fmt, ...) fox_log(LOG_TRACE, (fmt), __VA_ARGS__)
-#define fox_log_info(fmt, ...) fox_log(LOG_INFO, (fmt), __VA_ARGS__)
-#define fox_log_warning(fmt, ...) fox_log(LOG_WARNING, (fmt), __VA_ARGS__)
-#define fox_log_error(fmt, ...) fox_log(LOG_ERROR, (fmt), __VA_ARGS__)
-#define fox_log_critical(fmt, ...) fox_log(LOG_CRITICAL, (fmt), __VA_ARGS__)
+#define fox_log(level, fmt, ...) fox_log_ext((level), (fmt), __FILE__, __LINE__, ##__VA_ARGS__)
+#define fox_log_trace(fmt, ...) fox_log(LOG_TRACE, (fmt), ##__VA_ARGS__)
+#define fox_log_info(fmt, ...) fox_log(LOG_INFO, (fmt), ##__VA_ARGS__)
+#define fox_log_warning(fmt, ...) fox_log(LOG_WARNING, (fmt), ##__VA_ARGS__)
+#define fox_log_error(fmt, ...) fox_log(LOG_ERROR, (fmt), ##__VA_ARGS__)
+#define fox_log_critical(fmt, ...) fox_log(LOG_CRITICAL, (fmt), ##__VA_ARGS__)
 
 // Filesystem utils
 
@@ -855,20 +855,15 @@ int fox_nprocessors(void);
 #define FOX_IMPLEMENTATION
 #ifdef FOX_IMPLEMENTATION
 
-#ifdef FOX_OS_UNIX
-#    include <unistd.h>
-#endif
 #ifdef FOX_OS_LINUX
-#    include <sys/sysinfo.h>
-#endif
-#ifdef _POSIX_VERSION
-#    define FOX_OS_POSIX
 #    include <fcntl.h>
 #    include <poll.h>
 #    include <sys/stat.h>
 #    include <sys/statvfs.h>
+#    include <sys/sysinfo.h>
 #    include <sys/time.h>
 #    include <sys/wait.h>
+#    include <unistd.h>
 #else
 #    error "Bro are you mad? Compile this on a POSIX compliant system"
 #endif
@@ -1226,7 +1221,7 @@ FoxStringView fox_sv_from_sb(const FoxStringBuf sb) {
 }
 
 const char *fox_get_error_message(void) {
-#ifdef FOX_OS_POSIX
+#ifdef FOX_OS_LINUX
     return strerror(errno);
 #else
 #    error "Implement this"
@@ -1275,19 +1270,22 @@ void fox_logger_free(FoxLogger *logger) {
 void fox_logger_vlog_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args) {
     if (!logger)
         return;
-    fox_da_foreach(FoxSink, sink, &logger->sinks) {
-        va_list sink_args;
-        FoxStringBuf buf = {0};
-        bool will_write = false;
 
+    FoxStringBuf buf = {0};
+    fox_da_foreach(FoxSink, sink, &logger->sinks) {
+        bool will_write = false;
         if (sink->log_handler) {
+            va_list sink_args;
             va_copy(sink_args, args);
             will_write = sink->log_handler(sink, &buf, level, fmt, path, line, sink_args);
             va_end(sink_args);
         }
         if (sink->sink_write && will_write)
-            sink->sink_write(sink->handle, fox_sv(buf));
+            sink->sink_write(sink, fox_sv(buf));
+
+        fox_da_clear(&buf);
     }
+    fox_sb_free(&buf);
 }
 
 void fox_logger_log_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, const char *path, size_t line, ...) {
@@ -1305,15 +1303,13 @@ static void fox__free_def_log__(void) { fox_logger_free(&fox_default_logger); }
 
 void fox__init_def_log__(void) {
     if (!fox__def_log_init__) {
-        if (fox_default_logger.sinks.size == 0) {
-            FoxSink default_sink = {
-                    .handle = stderr,
-                    .log_handler = fox_default_log_handler,
-                    .sink_write = fox_default_log_write,
-                    .sink_close = NULL,
-            };
-            fox_da_append(&fox_default_logger.sinks, default_sink);
-        }
+        FoxSink default_sink = {
+                .handle = stderr,
+                .log_handler = fox_default_log_handler,
+                .sink_write = fox_default_log_write,
+                .sink_close = NULL,
+        };
+        fox_da_append(&fox_default_logger.sinks, default_sink);
         if (mtx_init(&fox__def_log_mtx__, mtx_plain) == thrd_error) {
             perror("could not initialize mutex for fox_default_logger");
             abort();
@@ -1333,19 +1329,19 @@ bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level
     const char *level_str = NULL;
     switch (level) {
     case LOG_TRACE:
-        level_str = "trace";
+        level_str = "TRACE";
         break;
     case LOG_INFO:
-        level_str = "\033[34minfo\033[0m";
+        level_str = "\033[34mINFO\033[0m";
         break;
     case LOG_WARNING:
-        level_str = "\033[93mwarning\033[0m";
+        level_str = "\033[93mWARNING\033[0m";
         break;
     case LOG_ERROR:
-        level_str = "\033[31merror\033[0m";
+        level_str = "\033[31mERROR\033[0m";
         break;
     case LOG_CRITICAL:
-        level_str = "\033[101mcritical\033[0m";
+        level_str = "\033[1m\033[91mCRITICAL\033[0m";
         break;
     case LOG_NO_LOGS:
         return false;
@@ -1356,8 +1352,10 @@ bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level
     FoxStringBuf fmt_buf = {0};
     fox_sb_vappendf(&fmt_buf, fmt, args);
 
-    // fox_sb_appendf(buf, "[%s] %s:%d: %s\n", level_str, path, line, fmt_buf.items);
+    // fox_sb_appendf(buf, "%s:%zu: [%s] %s\n", path, line, level_str, fmt_buf.items);
     fox_sb_appendf(buf, "[%s] %s\n", level_str, fmt_buf.items);
+    FOX_UNUSED(path);
+    FOX_UNUSED(line);
     fox_sb_free(&fmt_buf);
     return true;
 }
@@ -1439,7 +1437,7 @@ bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb) {
     if (!sb || !path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     bool result;
     char *buf = NULL;
     fox_da_clear(sb);
@@ -1467,7 +1465,7 @@ defer:
 #endif
 }
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
 static FoxFileType fox__fs_file_type__posix(mode_t mode) {
     if (S_ISREG(mode))
         return FILE_REGULAR;
@@ -1492,7 +1490,7 @@ bool fox_fs_file_status(const char *path, FoxFileStatus *status) {
     if (!status || !path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     struct stat file_info;
     if (stat(path, &file_info) < 0)
         return false;
@@ -1513,7 +1511,7 @@ bool fox_fs_symlink_status(const char *path, FoxFileStatus *status) {
     if (!status || !path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     struct stat file_info;
     if (lstat(path, &file_info) < 0)
         return false;
@@ -1550,7 +1548,7 @@ bool fox_fs_set_status(const char *path, FoxFileStatus status) {
 
     fox_fs_set_perms(path, status.perms);
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     const struct timeval acc_time = {status.last_accessed, 0};
     const struct timeval mod_time = {status.last_modified, 0};
     if (utimes(path, (const struct timeval[2]) {acc_time, mod_time}) == 0)
@@ -1567,7 +1565,7 @@ bool fox_fs_set_symlink_status(const char *path, FoxFileStatus status) {
 
     fox_fs_set_symlink_perms(path, status.perms);
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     const struct timeval acc_time = {status.last_accessed, 0};
     const struct timeval mod_time = {status.last_modified, 0};
     if (lutimes(path, (const struct timeval[2]) {acc_time, mod_time}) == 0)
@@ -1582,7 +1580,7 @@ bool fox_fs_set_perms(const char *path, FoxFilePerms perms) {
     if (!path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     if (chmod(path, (mode_t) perms) == 0)
         return true;
     return false;
@@ -1595,7 +1593,7 @@ bool fox_fs_set_symlink_perms(const char *path, FoxFilePerms perms) {
     if (!path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     if (fchmodat(AT_FDCWD, path, (mode_t) perms, AT_SYMLINK_NOFOLLOW))
         return true;
     return false;
@@ -1661,7 +1659,7 @@ bool fox_fs_is_symlink(const char *path) {
 }
 
 FoxStringBuf fox_fs_getcwd(void) {
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     char *buf = getcwd(NULL, 0);
     FoxStringBuf sb = fox_sb_from_cstr(buf);
     free(buf);
@@ -1675,7 +1673,7 @@ bool fox_fs_setcwd(const char *path) {
     if (!path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     if (chdir(path) == 0)
         return true;
     return false;
@@ -1688,7 +1686,7 @@ bool fox_fs_exists(const char *path) {
     if (!path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     return access(path, F_OK) == 0;
 #else
 #    error "Implement this"
@@ -1701,7 +1699,7 @@ bool fox_fs_equivalent(const char *path1, const char *path2) {
     if (!path2 || strlen(path2) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     struct stat file_info1;
     struct stat file_info2;
 
@@ -1720,7 +1718,7 @@ bool fox_fs_canonical(FoxStringBuf *sb) {
     if (!sb || sb->size == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     char *buf = realpath(sb->items, NULL);
     if (!buf)
         return false;
@@ -1738,7 +1736,7 @@ bool fox_fs_space(const char *path, FoxSpaceInfo *space) {
     if (!space || !path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     struct statvfs fs_info;
     if (statvfs(path, &fs_info) == 0) {
         space->capacity = fs_info.f_blocks * fs_info.f_frsize;
@@ -1756,7 +1754,7 @@ bool fox_fs_create_dir(const char *path) {
     if (!path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     if (!fox_fs_exists(path))
         if (mkdir(path, S_IRWXU | S_IRWXG | S_IRWXO) == 0)
             return true;
@@ -1801,7 +1799,7 @@ bool fox_fs_create_symlink(const char *target, const char *link) {
     if (!target || !link || strlen(target) == 0 || strlen(link) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     if (symlink(target, link) == 0)
         return true;
     return false;
@@ -1870,6 +1868,7 @@ bool fox_fs_copy(const char *from, const char *to, FoxCopyOptions options) {
     // TODO: implement this after completing directory visit
     FOX_UNUSED(from);
     FOX_UNUSED(to);
+    FOX_UNUSED(options);
     FOX_TODO("fox_fs_copy");
     return false;
 }
@@ -1941,7 +1940,7 @@ defer:
     return result;
 }
 
-#ifdef FOX_OS_POSIX
+#ifdef FOX_OS_LINUX
 bool fox__cmd_set_nonblocking_pipe__posix(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0)
@@ -1960,7 +1959,7 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
     if (!path || strlen(path) == 0)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     bool result;
 
     FoxFd stdin_fd = FOX_INVALID_FD;
@@ -2109,7 +2108,7 @@ bool fox_cmd_wait(FoxProc *process) {
     if (!process)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     bool result;
     for (;;) {
         int status = 0;
@@ -2151,7 +2150,7 @@ bool fox_cmd_kill(FoxProc *process, int sig) {
     if (!process)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     return kill(process->handle, sig) == 0;
 #else
 #    error "Implement this"
@@ -2162,7 +2161,7 @@ bool fox_cmd_write_stdin(FoxProc *process, const FoxStringView data, size_t *wri
     if (!process || process->stdin_fd == FOX_INVALID_FD)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     ssize_t n = write(process->stdin_fd, data.items, data.size);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -2182,7 +2181,7 @@ bool fox_cmd_read_stdout(FoxProc *process, void *buf, size_t size, size_t *bytes
     if (!buf || !process || process->stdin_fd == FOX_INVALID_FD)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     ssize_t n = read(process->stdout_fd, buf, size);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -2202,7 +2201,7 @@ bool fox_cmd_read_stderr(FoxProc *process, void *buf, size_t size, size_t *bytes
     if (!buf || !process || process->stdin_fd == FOX_INVALID_FD)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     ssize_t n = read(process->stderr_fd, buf, size);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -2223,7 +2222,7 @@ bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms) {
         return false;
     }
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     result->stdout_ready = false;
     result->stderr_ready = false;
     // Set up for poll() call
@@ -2265,7 +2264,7 @@ bool fox_cmd_is_running(FoxProc *process) {
     if (!process)
         return false;
 
-#if defined(FOX_OS_POSIX)
+#if defined(FOX_OS_LINUX)
     int status;
     pid_t ret = waitpid(process->handle, &status, WNOHANG);
     if (ret < 0)
@@ -2336,8 +2335,6 @@ defer:
 int fox_nprocessors(void) {
 #if defined(FOX_OS_LINUX)
     return get_nprocs();
-#elif defined(FOX_OS_POSIX)
-    return sysconf(_SC_NPROCESSORS_ONLN);
 #else
 #    error "Implement this"
 #endif
