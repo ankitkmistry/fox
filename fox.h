@@ -1,6 +1,9 @@
 #ifndef FOX_H_
 #define FOX_H_
 
+#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE
+
 #ifndef _CRT_SECURE_NO_WARNINGS
 #    define _CRT_SECURE_NO_WARNINGS
 #endif // _CRT_SECURE_NO_WARNINGS
@@ -658,7 +661,7 @@ bool fox_fs_read_entire_file(const char *path, FoxStringBuf *sb);
 bool fox_fs_write_entire_file(const char *path, const FoxStringView *sv);
 bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb);
 
-// INFO: Only FILE_REGULAR, FILE_DIR and FILE_SYMLINK works on Windows
+// INFO: Only FOX_FILE_REGULAR, FOX_FILE_DIR and FOX_FILE_SYMLINK works on Windows
 // Everything else works on POSIX compliant systems
 
 typedef enum {
@@ -688,7 +691,6 @@ enum {
     FOX_PERM_OTHERS_ALL = FOX_PERM_OTHERS_READ | FOX_PERM_OTHERS_WRITE | FOX_PERM_OTHERS_EXEC,
     FOX_PERM_ALL = FOX_PERM_OWNER_ALL | FOX_PERM_GROUP_ALL | FOX_PERM_OTHERS_ALL,
 
-    // Use this Windows
     FOX_PERM_READONLY = FOX_PERM_OWNER_READ | FOX_PERM_GROUP_READ | FOX_PERM_OTHERS_READ,
 };
 
@@ -888,9 +890,6 @@ u32 fox_nprocessors(void);
 #ifdef FOX_IMPLEMENTATION
 
 #if defined(FOX_OS_LINUX)
-#    define _POSIX_C_SOURCE 200809L
-#    define _DEFAULT_SOURCE
-
 #    include <fcntl.h>
 #    include <poll.h>
 #    include <sys/stat.h>
@@ -912,8 +911,8 @@ typedef int FoxFd;
 #    define FOX_INVALID_HANDLE (FoxProcHandle)(-1)
 #    define FOX_INVALID_FD (FoxFd)(-1)
 
-static_assert(sizeof(void *) >= sizeof(FoxProcHandle));
-static_assert(sizeof(void *) >= sizeof(FoxFd));
+_Static_assert(sizeof(void *) >= sizeof(FoxProcHandle), "sizeof(void *) should be >= sizeof(FoxProcHandle) aka pid_t");
+_Static_assert(sizeof(void *) >= sizeof(FoxFd), "sizeof(void *) should be >= sizeof(FoxFd) aka int");
 #elif defined(FOX_OS_WINDOWS)
 typedef HANDLE FoxProcHandle;
 typedef HANDLE FoxFd;
@@ -1297,7 +1296,7 @@ FoxStringView fox_sv_from_sv(const FoxStringView sv) { return sv; }
 
 void fox_get_error_message(FoxStringBuf *buf) {
 #ifdef FOX_OS_LINUX
-    return strerror(errno);
+    fox_sb_copy(buf, strerror(errno));
 #elif defined(FOX_OS_WINDOWS)
     fox_da_clear(buf);
     char err_msg_buf[4096];
@@ -1728,7 +1727,7 @@ bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb) {
     FoxFileStatus status;
     if (!fox_fs_symlink_status(path, &status))
         fox_return_defer(false);
-    if (status.type != FILE_SYMLINK)
+    if (status.type != FOX_FILE_SYMLINK)
         fox_return_defer(false);
 
     const size_t buf_size = status.size;
@@ -1789,23 +1788,23 @@ defer:
 }
 
 #if defined(FOX_OS_LINUX)
-static FoxFileType fox__fs_file_type__posix(mode_t mode) {
+static FoxFileType fox__fs_file_type__(mode_t mode) {
     if (S_ISREG(mode))
-        return FILE_REGULAR;
+        return FOX_FILE_REGULAR;
     else if (S_ISDIR(mode))
-        return FILE_DIR;
+        return FOX_FILE_DIR;
     else if ((mode & 0170000) == 0120000)
-        return FILE_SYMLINK; // This work only when lstat() is used
+        return FOX_FILE_SYMLINK; // This work only when lstat() is used
     else if (S_ISCHR(mode))
-        return FILE_CHARACTER;
+        return FOX_FILE_CHARACTER;
     else if (S_ISBLK(mode))
-        return FILE_BLOCK;
+        return FOX_FILE_BLOCK;
     else if (S_ISFIFO(mode))
-        return FILE_PIPE;
+        return FOX_FILE_PIPE;
     else if ((mode & 0170000) == 0140000)
-        return FILE_SOCKET;
+        return FOX_FILE_SOCKET;
     else
-        return FILE_UNKNOWN;
+        return FOX_FILE_UNKNOWN;
 }
 #endif
 
@@ -1819,9 +1818,13 @@ bool fox_fs_file_status(const char *path, FoxFileStatus *status) {
         return false;
 
     // Get the file type
-    status->type = fox__fs_file_type__posix(file_info.st_mode);
+    status->type = fox__fs_file_type__(file_info.st_mode);
     status->size = file_info.st_size;
-    status->perms = (FoxFilePerms) (file_info.st_mode & PERM_ALL);
+    // status->perms = (FoxFilePerms) (file_info.st_mode & FOX_PERM_ALL);
+    if (file_info.st_mode & (FOX_PERM_OWNER_WRITE | FOX_PERM_GROUP_WRITE | FOX_PERM_OTHERS_WRITE))
+        status->read_only = false;
+    else
+        status->read_only = true;
     status->last_modified = file_info.st_mtime;
     status->last_accessed = file_info.st_atime;
     return true;
@@ -1847,9 +1850,12 @@ bool fox_fs_symlink_status(const char *path, FoxFileStatus *status) {
         return false;
 
     // Get the file type
-    status->type = fox__fs_file_type__posix(file_info.st_mode);
+    status->type = fox__fs_file_type__(file_info.st_mode);
     status->size = file_info.st_size;
-    status->perms = (FoxFilePerms) (file_info.st_mode & PERM_ALL);
+    if (file_info.st_mode & (FOX_PERM_OWNER_WRITE | FOX_PERM_GROUP_WRITE | FOX_PERM_OTHERS_WRITE))
+        status->read_only = false;
+    else
+        status->read_only = true;
     status->last_modified = file_info.st_mtime;
     status->last_accessed = file_info.st_atime;
     return true;
@@ -1879,7 +1885,8 @@ bool fox_fs_set_status(const char *path, const FoxFileStatus status) {
         return false;
 
 #if defined(FOX_OS_LINUX)
-    fox_fs_set_perms(path, status.perms);
+    if (status.read_only)
+        fox_fs_set_perms(path, FOX_PERM_READONLY);
     const struct timeval acc_time = {status.last_accessed, 0};
     const struct timeval mod_time = {status.last_modified, 0};
     if (utimes(path, (const struct timeval[2]) {acc_time, mod_time}) == 0)
@@ -1920,7 +1927,8 @@ bool fox_fs_set_symlink_status(const char *path, const FoxFileStatus status) {
         return false;
 
 #if defined(FOX_OS_LINUX)
-    fox_fs_set_symlink_perms(path, status.perms);
+    if (status.read_only)
+        fox_fs_set_symlink_perms(path, FOX_PERM_READONLY);
     const struct timeval acc_time = {status.last_accessed, 0};
     const struct timeval mod_time = {status.last_modified, 0};
     if (lutimes(path, (const struct timeval[2]) {acc_time, mod_time}) == 0)
@@ -1956,7 +1964,12 @@ bool fox_fs_get_perms(const char *path, FoxFilePerms *perms) {
         return false;
 
 #if defined(FOX_OS_LINUX)
-#    error "Implement this"
+    struct stat file_info;
+    if (stat(path, &file_info) < 0)
+        return false;
+
+    *perms = (FoxFilePerms) file_info.st_mode;
+    return true;
 #elif defined(FOX_OS_WINDOWS)
     FOX_UNUSED(path);
     FOX_UNUSED(perms);
@@ -1988,7 +2001,12 @@ bool fox_fs_get_symlink_perms(const char *path, FoxFilePerms *perms) {
         return false;
 
 #if defined(FOX_OS_LINUX)
-#    error "Implement this"
+    struct stat file_info;
+    if (lstat(path, &file_info) < 0)
+        return false;
+
+    *perms = (FoxFilePerms) file_info.st_mode;
+    return true;
 #elif defined(FOX_OS_WINDOWS)
     FOX_UNUSED(path);
     FOX_UNUSED(perms);
@@ -2189,7 +2207,7 @@ bool fox_fs_canonical(FoxStringBuf *sb) {
         return false;
 
     fox_sb_free(sb);
-    *sb = fox_sb_from_cstr(buf);
+    *sb = fox_sb(buf);
     free(buf);
     return true;
 #elif defined(FOX_OS_WINDOWS)
@@ -2257,7 +2275,7 @@ bool fox_fs_create_dir(const char *path) {
 
 #if defined(FOX_OS_LINUX)
     if (!fox_fs_exists(path))
-        if (mkdir(path, PERM_ALL) == 0)
+        if (mkdir(path, FOX_PERM_ALL) == 0)
             return true;
     return false;
 #elif defined(FOX_OS_WINDOWS)
@@ -2447,7 +2465,7 @@ defer:
 }
 
 #ifdef FOX_OS_LINUX
-bool fox__cmd_set_nonblocking_pipe__posix(int fd) {
+bool fox__cmd_set_nonblocking_pipe__posix(FoxFd fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags < 0)
         return false;
@@ -2466,7 +2484,7 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
         size_t capacity;
     } CStrs;
 
-    mode_t create_mode = PERM_OWNER_READ | PERM_OWNER_WRITE | PERM_GROUP_READ | PERM_OTHERS_READ;
+    mode_t create_mode = FOX_PERM_OWNER_READ | FOX_PERM_OWNER_WRITE | FOX_PERM_GROUP_READ | FOX_PERM_OTHERS_READ;
 
     FoxFd stdin_fd = FOX_INVALID_FD;
     FoxFd stdout_fd = FOX_INVALID_FD;
@@ -2504,7 +2522,7 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
         close(stderr_fd);
         // Change working directory
         if (opt.working_dir.size != 0) {
-            FoxStringBuf tmp = fox_sb_from_sv(opt.working_dir);
+            FoxStringBuf tmp = fox_sb(opt.working_dir);
             if (fox_fs_setcwd(tmp.items)) {
                 fox_sb_free(&tmp);
                 _exit(127);
@@ -2517,16 +2535,18 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
         CStrs final_args = {0};
         fox_da_append(&final_args, path);
         fox_da_foreach(FoxStringView, it, &argv) {
-            fox_da_append(&arena, fox_sb_from_sv(*it));
+            fox_da_append(&arena, fox_sb(*it));
             fox_da_append(&final_args, fox_da_back(&arena).items);
         }
         fox_da_reserve(&final_args, final_args.size + 1);
         final_args.items[final_args.size++] = NULL;
         // Create the final env array
         CStrs final_env = {0};
-        if (opt.env.size > 0) {
-            fox_da_foreach(FoxStringView, it, &opt.env) {
-                fox_da_append(&arena, fox_sb_from_sv(*it));
+        if (opt.env->size > 0) {
+            fox_da_foreach(const FoxEnvEntry, entry, opt.env) {
+                fox_da_append(&arena, fox_sb(entry->key));
+                fox_da_append(&final_env, fox_da_back(&arena).items);
+                fox_da_append(&arena, fox_sb(entry->value));
                 fox_da_append(&final_env, fox_da_back(&arena).items);
             }
             fox_da_reserve(&final_env, final_env.size + 1);
@@ -2548,10 +2568,16 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
         _exit(127);
     }
 
-    process->handle = (void *) pid;
-    process->stdin_fd = FOX_INVALID_FD;
-    process->stdout_fd = FOX_INVALID_FD;
-    process->stderr_fd = FOX_INVALID_FD;
+    FoxProcHandle *handle = malloc(sizeof(FoxProcHandle));
+    FoxFd *stdin_write = NULL;
+    FoxFd *stdout_read = NULL;
+    FoxFd *stderr_read = NULL;
+    *handle = pid;
+
+    process->handle = handle;
+    process->stdin_write = stdin_write;
+    process->stdout_read = stdout_read;
+    process->stderr_read = stderr_read;
     process->running = true;
     process->exit_code = 0;
     return true;
@@ -2710,7 +2736,7 @@ bool fox_cmd_spawn_piped_opt(FoxProc *process, const char *path, const FoxString
         close(err_pipe[1]);
         // Change working directory
         if (opt.working_dir.size != 0) {
-            FoxStringBuf tmp = fox_sb_from_sv(opt.working_dir);
+            FoxStringBuf tmp = fox_sb(opt.working_dir);
             if (fox_fs_setcwd(tmp.items)) {
                 fox_sb_free(&tmp);
                 _exit(127);
@@ -2723,17 +2749,22 @@ bool fox_cmd_spawn_piped_opt(FoxProc *process, const char *path, const FoxString
         CStrs final_argv = {0};
         fox_da_append(&final_argv, path);
         fox_da_foreach(FoxStringView, it, &argv) {
-            fox_da_append(&arena, fox_sb_from_sv(*it));
+            fox_da_append(&arena, fox_sb(*it));
             fox_da_append(&final_argv, fox_da_back(&arena).items);
         }
         final_argv.items[final_argv.size++] = NULL;
         // Create the final env array
         CStrs final_env = {0};
-        fox_da_foreach(FoxStringView, it, &opt.env) {
-            fox_da_append(&arena, fox_sb_from_sv(*it));
-            fox_da_append(&final_env, fox_da_back(&arena).items);
+        if (opt.env->size > 0) {
+            fox_da_foreach(const FoxEnvEntry, entry, opt.env) {
+                fox_da_append(&arena, fox_sb(entry->key));
+                fox_da_append(&final_env, fox_da_back(&arena).items);
+                fox_da_append(&arena, fox_sb(entry->value));
+                fox_da_append(&final_env, fox_da_back(&arena).items);
+            }
+            fox_da_reserve(&final_env, final_env.size + 1);
+            final_env.items[final_env.size++] = NULL;
         }
-        final_env.items[final_env.size++] = NULL;
         // Now run the program
         int ret;
         if (final_env.size == 0)
@@ -2750,10 +2781,19 @@ bool fox_cmd_spawn_piped_opt(FoxProc *process, const char *path, const FoxString
         _exit(127);
     }
 
-    process->handle = pid;
-    process->stdin_fd = in_pipe[1];
-    process->stdout_fd = out_pipe[0];
-    process->stderr_fd = err_pipe[0];
+    FoxProcHandle *handle = malloc(sizeof(FoxProcHandle));
+    FoxFd *stdin_write = malloc(sizeof(FoxFd));
+    FoxFd *stdout_read = malloc(sizeof(FoxFd));
+    FoxFd *stderr_read = malloc(sizeof(FoxFd));
+    *handle = pid;
+    *stdin_write = in_pipe[1];
+    *stdout_read = out_pipe[0];
+    *stderr_read = err_pipe[0];
+
+    process->handle = handle;
+    process->stdin_write = stdin_write;
+    process->stdout_read = stdout_read;
+    process->stderr_read = stderr_read;
     process->running = true;
     process->exit_code = 0;
 
@@ -2761,14 +2801,14 @@ bool fox_cmd_spawn_piped_opt(FoxProc *process, const char *path, const FoxString
     close(out_pipe[1]);
     close(err_pipe[1]);
 
-    if (process->stdin_fd != FOX_INVALID_FD)
-        if (!fox__cmd_set_nonblocking_pipe__posix(process->stdin_fd))
+    if (*(FoxFd *) process->stdin_write != FOX_INVALID_FD)
+        if (!fox__cmd_set_nonblocking_pipe__posix(*(FoxFd *) process->stdin_write))
             fox_return_defer(false);
-    if (process->stdout_fd != FOX_INVALID_FD)
-        if (!fox__cmd_set_nonblocking_pipe__posix(process->stdout_fd))
+    if (*(FoxFd *) process->stdout_read != FOX_INVALID_FD)
+        if (!fox__cmd_set_nonblocking_pipe__posix(*(FoxFd *) process->stdout_read))
             fox_return_defer(false);
-    if (process->stderr_fd != FOX_INVALID_FD)
-        if (!fox__cmd_set_nonblocking_pipe__posix(process->stderr_fd))
+    if (*(FoxFd *) process->stderr_read != FOX_INVALID_FD)
+        if (!fox__cmd_set_nonblocking_pipe__posix(*(FoxFd *) process->stderr_read))
             fox_return_defer(false);
     fox_return_defer(true);
 
@@ -2890,7 +2930,7 @@ bool fox_cmd_wait(FoxProc *process) {
 #if defined(FOX_OS_LINUX)
     bool result;
 
-    FoxProcHandle pid = process->handle;
+    FoxProcHandle pid = *(FoxProcHandle *) process->handle;
     for (;;) {
         int status = 0;
         if (waitpid(pid, &status, 0) < 0)
@@ -2908,20 +2948,25 @@ bool fox_cmd_wait(FoxProc *process) {
     }
 
 defer:
+    (void) 0;
     // Close pipes (child is finished)
-    if (process->stdin_fd != FOX_INVALID_FD) {
-        close((FoxFd) process->stdin_fd);
-        process->stdin_fd = FOX_INVALID_FD;
+    if (process->stdin_write) {
+        close(*(FoxFd *) process->stdin_write);
+        process->stdin_write = NULL;
     }
-    if (process->stdout_fd != FOX_INVALID_FD) {
-        close((FoxFd) process->stdout_fd);
-        process->stdout_fd = FOX_INVALID_FD;
+    if (process->stdout_read) {
+        close(*(FoxFd *) process->stdout_read);
+        process->stdout_read = NULL;
     }
-    if (process->stderr_fd != FOX_INVALID_FD) {
-        close((FoxFd) process->stderr_fd);
-        process->stderr_fd = FOX_INVALID_FD;
+    if (process->stderr_read) {
+        close(*(FoxFd *) process->stderr_read);
+        process->stderr_read = NULL;
     }
-    process->handle = FOX_INVALID_HANDLE;
+    free(process->stdin_write);
+    free(process->stdout_read);
+    free(process->stderr_read);
+    free(process->handle);
+    process->handle = NULL;
     return result;
 #elif defined(FOX_OS_WINDOWS)
     FoxProcHandle h = process->handle;
@@ -2963,7 +3008,7 @@ bool fox_cmd_kill(FoxProc *process, int value) {
         return false;
 
 #if defined(FOX_OS_LINUX)
-    return kill(process->handle, sig) == 0;
+    return kill(*(FoxProcHandle *) process->handle, value) == 0;
 #elif defined(FOX_OS_WINDOWS)
     FoxProcHandle h = process->handle;
     return TerminateProcess(h, (UINT) value);
@@ -2973,13 +3018,16 @@ bool fox_cmd_kill(FoxProc *process, int value) {
 }
 
 bool fox_cmd_write_stdin(FoxProc *process, const FoxStringView data, size_t *written) {
-    if (!process || process->stdin_write == FOX_INVALID_FD)
+    if (!process)
         return false;
     if (data.size == 0)
         return true;
 
 #if defined(FOX_OS_LINUX)
-    ssize_t n = write(process->stdin_fd, data.items, data.size);
+    if (process->stdin_write == NULL)
+        return false;
+
+    ssize_t n = write(*(FoxFd *) process->stdin_write, data.items, data.size);
     if (n < 0) {
         if (errno == EAGAIN || errno == EWOULDBLOCK)
             n = 0;
@@ -2990,6 +3038,9 @@ bool fox_cmd_write_stdin(FoxProc *process, const FoxStringView data, size_t *wri
         *written = (size_t) n;
     return true;
 #elif defined(FOX_OS_WINDOWS)
+    if (process->stdin_write == FOX_INVALID_FD)
+        return false;
+
     bool result;
 
     OVERLAPPED ov = {0};
@@ -3039,6 +3090,9 @@ static bool fox__cmd_read_fd__(FoxFd fd, void *buf, size_t size, size_t *bytes_r
         *bytes_read = (size_t) n;
     return true;
 #elif defined(FOX_OS_WINDOWS)
+    if (process->stdin_write == FOX_INVALID_FD)
+        return false;
+
     bool result;
 
     OVERLAPPED ov = {0};
@@ -3076,15 +3130,33 @@ defer:
 }
 
 bool fox_cmd_read_stdout(FoxProc *process, void *buf, size_t size, size_t *bytes_read) {
-    if (!buf || !process || process->stdin_write == FOX_INVALID_FD)
+    if (!buf || !process)
         return false;
+
+#if defined(FOX_OS_LINUX)
+    if (!process->stdout_read)
+        return false;
+    return fox__cmd_read_fd__(*(FoxFd *) process->stdout_read, buf, size, bytes_read);
+#elif defined(FOX_OS_WINDOWS)
     return fox__cmd_read_fd__(process->stdout_read, buf, size, bytes_read);
+#else
+#    error "Implement this"
+#endif
 }
 
 bool fox_cmd_read_stderr(FoxProc *process, void *buf, size_t size, size_t *bytes_read) {
-    if (!buf || !process || process->stdin_write == FOX_INVALID_FD)
+    if (!buf || !process)
         return false;
+
+#if defined(FOX_OS_LINUX)
+    if (!process->stderr_read)
+        return false;
+    return fox__cmd_read_fd__(*(FoxFd *) process->stderr_read, buf, size, bytes_read);
+#elif defined(FOX_OS_WINDOWS)
     return fox__cmd_read_fd__(process->stderr_read, buf, size, bytes_read);
+#else
+#    error "Implement this"
+#endif
 }
 
 bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms) {
@@ -3101,13 +3173,13 @@ bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms) {
     // Set up for poll() call
     struct pollfd fds[2];
     nfds_t nfds = 0;
-    if (process->stdout_fd != FOX_INVALID_FD) {
-        fds[nfds].fd = process->stdout_fd;
+    if (*(FoxFd *) process->stdout_read != FOX_INVALID_FD) {
+        fds[nfds].fd = *(FoxFd *) process->stdout_read;
         fds[nfds].events = POLLIN;
         nfds++;
     }
-    if (process->stderr_fd != FOX_INVALID_FD) {
-        fds[nfds].fd = process->stderr_fd;
+    if (*(FoxFd *) process->stderr_read != FOX_INVALID_FD) {
+        fds[nfds].fd = *(FoxFd *) process->stderr_read;
         fds[nfds].events = POLLIN;
         nfds++;
     }
@@ -3117,12 +3189,12 @@ bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms) {
         return false;
     // Set poll result
     nfds = 0;
-    if (process->stdout_fd != FOX_INVALID_FD) {
+    if (*(FoxFd *) process->stdout_read != FOX_INVALID_FD) {
         if (fds[nfds].revents & POLLIN)
             result->stdout_ready = true;
         nfds++;
     }
-    if (process->stderr_fd != FOX_INVALID_FD) {
+    if (*(FoxFd *) process->stderr_read != FOX_INVALID_FD) {
         if (fds[nfds].revents & POLLIN)
             result->stderr_ready = true;
         nfds++;
@@ -3166,7 +3238,7 @@ bool fox_cmd_is_running(FoxProc *process) {
 
 #if defined(FOX_OS_LINUX)
     int status;
-    pid_t ret = waitpid(process->handle, &status, WNOHANG);
+    pid_t ret = waitpid(*(FoxProcHandle *) process->handle, &status, WNOHANG);
     if (ret < 0)
         return false; // TODO: report error
     if (ret == 0) {
@@ -3217,6 +3289,8 @@ static void fox__log_cmd__(const FoxCmd *cmd) {
 bool fox_cmd_run_opt(FoxCmd *cmd, FoxCmdOpt opt) {
     if (!cmd)
         return false;
+    if (cmd->size == 0)
+        return true; // Execute nothing
 
     bool result;
 
