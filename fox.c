@@ -14,7 +14,7 @@ typedef struct {
     size_t capacity;
 } Numbers;
 
-int main() {
+int main(void) {
     // Ages ages;
     //
     // for (;;) {
@@ -74,13 +74,38 @@ int main() {
 
     FoxCmd cmd = {0};
 
+#ifdef FOX_OS_LINUX
     fox_cmd_append(&cmd, "ls", "--color", "-hal");
     fox_cmd_run(&cmd);
-    fox_log_info("Process completed");
+    if (fox_cmd_run(&cmd))
+        fox_log_info("Process completed");
+    else {
+        FoxStringBuf err = {0};
+        fox_get_error_message(&err);
+        fox_log_error("Process failed: %s", err.items);
+        fox_sb_free(&err);
+    }
+#else
+    fox_cmd_append(&cmd, "notepad");
+    if (fox_cmd_run(&cmd))
+        fox_log_info("Process completed");
+    else {
+        FoxStringBuf err = {0};
+        fox_get_error_message(&err);
+        fox_log_error("Process failed: %s", err.items);
+        fox_sb_free(&err);
+    }
+#endif
 
-    fox_cmd_append(&cmd, "gcc", "--version");
-    fox_cmd_run(&cmd);
-    fox_log_info("Process completed");
+    fox_cmd_append(&cmd, "clang", "--version");
+    if (fox_cmd_run(&cmd))
+        fox_log_info("Process completed");
+    else {
+        FoxStringBuf err = {0};
+        fox_get_error_message(&err);
+        fox_log_error("Process failed: %s", err.items);
+        fox_sb_free(&err);
+    }
 
     fox_cmd_free(&cmd);
 
