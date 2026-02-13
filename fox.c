@@ -75,11 +75,9 @@ int main(void) {
     FoxCmd cmd = {0};
 
 #ifdef FOX_OS_LINUX
-    fox_cmd_append(&cmd, "ls", "--color", "-hal");
+    fox_cmd_append(&cmd, "aboba", "--color", "-hal");
     fox_cmd_run(&cmd);
-    if (fox_cmd_run(&cmd))
-        fox_log_info("Process completed");
-    else {
+    if (!fox_cmd_run(&cmd)) {
         FoxStringBuf err = {0};
         fox_get_error_message(&err);
         fox_log_error("Process failed: %s", err.items);
@@ -87,9 +85,7 @@ int main(void) {
     }
 #else
     fox_cmd_append(&cmd, "notepad");
-    if (fox_cmd_run(&cmd))
-        fox_log_info("Process completed");
-    else {
+    if (!fox_cmd_run(&cmd)) {
         FoxStringBuf err = {0};
         fox_get_error_message(&err);
         fox_log_error("Process failed: %s", err.items);
@@ -98,9 +94,7 @@ int main(void) {
 #endif
 
     fox_cmd_append(&cmd, "clang", "--version");
-    if (fox_cmd_run(&cmd))
-        fox_log_info("Process completed");
-    else {
+    if (!fox_cmd_run(&cmd)) {
         FoxStringBuf err = {0};
         fox_get_error_message(&err);
         fox_log_error("Process failed: %s", err.items);

@@ -20,6 +20,13 @@
 #include <string.h>
 #include <threads.h>
 
+// TODO: To be implemented next
+// - Directory visit (Directory only and recursive)
+// - Implement path function (concat, filename, rootpath and extensions)
+// - Implement async cmd execution
+// - Implement log pattern just like spdlog
+// - Log errors wherever necessary (with #ifndef FOX_NO_ECHO)
+
 /// General helping utils
 /// - i8
 /// - i16
@@ -661,8 +668,8 @@ bool fox_fs_read_entire_file(const char *path, FoxStringBuf *sb);
 bool fox_fs_write_entire_file(const char *path, const FoxStringView *sv);
 bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb);
 
-// INFO: Only FOX_FILE_REGULAR, FOX_FILE_DIR and FOX_FILE_SYMLINK works on Windows
-// Everything else works on POSIX compliant systems
+// INFO: Only FOX_FILE_REGULAR, FOX_FILE_DIR and FOX_FILE_SYMLINK works on Windows.
+// Everything else works on POSIX compliant systems.
 
 typedef enum {
     FOX_FILE_UNKNOWN,
@@ -842,7 +849,7 @@ typedef struct {
     i64 stderr_avail;
 } FoxPollResult;
 
-bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms);
+bool fox_cmd_poll(const FoxProc *process, FoxPollResult *result, int timeout_ms);
 bool fox_cmd_is_running(FoxProc *process);
 
 typedef struct {
@@ -869,6 +876,8 @@ typedef struct {
     const char *stdin_path;
     const char *stdout_path;
     const char *stderr_path;
+
+    int *exit_code;
 } FoxCmdOpt;
 
 bool fox_cmd_run_opt(FoxCmd *cmd, FoxCmdOpt opt);
@@ -880,6 +889,7 @@ bool fox_cmd_run_opt(FoxCmd *cmd, FoxCmdOpt opt);
                                         .stdin_path = NULL,                                                                                          \
                                         .stdout_path = NULL,                                                                                         \
                                         .stderr_path = NULL,                                                                                         \
+                                        .exit_code = NULL,                                                                                           \
                                         __VA_ARGS__})
 
 u32 fox_nprocessors(void);
@@ -890,8 +900,10 @@ u32 fox_nprocessors(void);
 #ifdef FOX_IMPLEMENTATION
 
 #if defined(FOX_OS_LINUX)
+#    include <asm/termbits.h>
 #    include <fcntl.h>
 #    include <poll.h>
+#    include <sys/ioctl.h>
 #    include <sys/stat.h>
 #    include <sys/statvfs.h>
 #    include <sys/sysinfo.h>
@@ -1630,7 +1642,7 @@ bool fox__fs_status__(const char *path, FoxFileStatus *status, bool follow_symli
     // Normally, we only need FILE_READ_ATTRIBUTES access mode. But SMBv1 reports incorrect
     // file attributes in GetFileInformationByHandleEx in this case (e.g. it reports FILE_ATTRIBUTE_NORMAL
     // for a directory in a SMBv1 share), so we add FILE_READ_EA as a workaround.
-    HANDLE h = CreateFile(path, FILE_READ_ATTRIBUTES | FILE_READ_EA, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+    HANDLE h = CreateFile(path, FILE_READ_ATTRIBUTES | FILE_READ_EA, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
                           follow_symlink ? FILE_FLAG_BACKUP_SEMANTICS : FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
     DWORD attrs, reparse_tag = 0u;
     FILETIME last_acc, last_mod;
@@ -1745,7 +1757,7 @@ defer:
 #elif defined(FOX_OS_WINDOWS)
     bool result;
 
-    HANDLE h = CreateFile(sb->items, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+    HANDLE h = CreateFile(sb->items, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
                           FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, NULL);
     if (h == INVALID_HANDLE_VALUE)
         return false;
@@ -1906,7 +1918,8 @@ bool fox_fs_set_status(const char *path, const FoxFileStatus status) {
     if (!SetFileAttributes(path, attrs))
         return false;
 
-    HANDLE h = CreateFile(path, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    HANDLE h = CreateFile(path, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                          FILE_FLAG_BACKUP_SEMANTICS, NULL);
     if (h == INVALID_HANDLE_VALUE)
         return false;
     // Set the file time
@@ -1942,7 +1955,7 @@ bool fox_fs_set_symlink_status(const char *path, const FoxFileStatus status) {
 
     // Setting symlinks readonly does not make any sense in Windows
 
-    HANDLE h = CreateFile(path, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
+    HANDLE h = CreateFile(path, FILE_WRITE_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
                           FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, NULL);
     if (h == INVALID_HANDLE_VALUE)
         return false;
@@ -2168,14 +2181,15 @@ bool fox_fs_equivalent(const char *path1, const char *path2) {
 #elif defined(FOX_OS_WINDOWS)
     bool result;
 
-    HANDLE h1 = CreateFile(path1,                              // Path of the file
-                           GENERIC_READ,                       // Sir, I want to read
-                           FILE_SHARE_READ | FILE_SHARE_WRITE, // Other people can read and write, I hv no prblm
-                           NULL,                               // Do not really know what is this
-                           OPEN_EXISTING,                      // I will not create any file
-                           FILE_FLAG_BACKUP_SEMANTICS,         // Allow directories also pls
-                           NULL);                              // huh?
-    HANDLE h2 = CreateFile(path2, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    HANDLE h1 = CreateFile(path1,                                                  // Path of the file
+                           GENERIC_READ,                                           // Sir, I want to read
+                           FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, // Other people can read and write, I hv no prblm
+                           NULL,                                                   // Do not really know what is this
+                           OPEN_EXISTING,                                          // I will not create any file
+                           FILE_FLAG_BACKUP_SEMANTICS,                             // Allow directories also pls
+                           NULL);                                                  // huh?
+    HANDLE h2 = CreateFile(path2, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                           FILE_FLAG_BACKUP_SEMANTICS, NULL);
     if (h1 == INVALID_HANDLE_VALUE || h2 == INVALID_HANDLE_VALUE)
         fox_return_defer(false);
 
@@ -2213,7 +2227,8 @@ bool fox_fs_canonical(FoxStringBuf *sb) {
 #elif defined(FOX_OS_WINDOWS)
     bool result;
 
-    HANDLE h = CreateFile(sb->items, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    HANDLE h = CreateFile(sb->items, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+                          FILE_FLAG_BACKUP_SEMANTICS, NULL);
     if (h == INVALID_HANDLE_VALUE)
         return false;
 
@@ -2325,9 +2340,12 @@ bool fox_fs_create_symlink(const char *target, const char *link) {
         return true;
     return false;
 #elif defined(FOX_OS_WINDOWS)
-    return CreateSymbolicLink(link, target, 0); // Link to a file
-    // TODO: Check for this
-    // return CreateSymbolicLink(link, target, SYMBOLIC_LINK_FLAG_DIRECTORY); // Link to a directory
+    if (fox_fs_is_dir(target))
+        return CreateSymbolicLink(link, target, SYMBOLIC_LINK_FLAG_DIRECTORY); // Link to a directory
+    else if (fox_fs_exists(target))
+        return CreateSymbolicLink(link, target, 0); // Link to a file
+    else
+        return false;
 #else
 #    error "Implement this"
 #endif
@@ -2563,7 +2581,6 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
             fox_da_free(&final_args);
             fox_da_foreach(FoxStringBuf, it, &arena) { fox_sb_free(it); }
             fox_da_free(&arena);
-            return false;
         }
         _exit(127);
     }
@@ -2938,11 +2955,17 @@ bool fox_cmd_wait(FoxProc *process) {
         if (WIFEXITED(status)) {
             process->running = false;
             process->exit_code = WEXITSTATUS(status);
+#    ifndef FOX_NO_ECHO
+            fox_log_info("[CMD] Process exited with exit code %d", WEXITSTATUS(status));
+#    endif // FOX_NO_ECHO
             fox_return_defer(true);
         }
         if (WIFSIGNALED(status)) {
             process->running = false;
             process->exit_code = 128 + WTERMSIG(status);
+#    ifndef FOX_NO_ECHO
+            fox_log_info("[CMD] Process exited with signal %d", WTERMSIG(status));
+#    endif // FOX_NO_ECHO
             fox_return_defer(true);
         }
     }
@@ -2980,6 +3003,10 @@ defer:
     // Set state
     process->running = false;
     process->exit_code = code;
+#    ifndef FOX_NO_ECHO
+    fox_log_info("[CMD] Process exited with exit code %d", process->exit_code);
+#    endif // FOX_NO_ECHO
+
     // Cleanup
     if (process->stdin_write != FOX_INVALID_FD) {
         CloseHandle((HANDLE) process->stdin_write);
@@ -3159,7 +3186,7 @@ bool fox_cmd_read_stderr(FoxProc *process, void *buf, size_t size, size_t *bytes
 #endif
 }
 
-bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms) {
+bool fox_cmd_poll(const FoxProc *process, FoxPollResult *result, int timeout_ms) {
     if (!process || !result) {
         return false;
     }
@@ -3169,17 +3196,18 @@ bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms) {
     result->stderr_avail = -1;
 
 #if defined(FOX_OS_LINUX)
-    // TODO: implement avail
+    FoxFd stdout_read = *(FoxFd *) process->stdout_read;
+    FoxFd stderr_read = *(FoxFd *) process->stderr_read;
     // Set up for poll() call
     struct pollfd fds[2];
     nfds_t nfds = 0;
-    if (*(FoxFd *) process->stdout_read != FOX_INVALID_FD) {
-        fds[nfds].fd = *(FoxFd *) process->stdout_read;
+    if (stdout_read != FOX_INVALID_FD) {
+        fds[nfds].fd = stdout_read;
         fds[nfds].events = POLLIN;
         nfds++;
     }
-    if (*(FoxFd *) process->stderr_read != FOX_INVALID_FD) {
-        fds[nfds].fd = *(FoxFd *) process->stderr_read;
+    if (stderr_read != FOX_INVALID_FD) {
+        fds[nfds].fd = stderr_read;
         fds[nfds].events = POLLIN;
         nfds++;
     }
@@ -3189,14 +3217,22 @@ bool fox_cmd_poll(FoxProc *process, FoxPollResult *result, int timeout_ms) {
         return false;
     // Set poll result
     nfds = 0;
-    if (*(FoxFd *) process->stdout_read != FOX_INVALID_FD) {
-        if (fds[nfds].revents & POLLIN)
+    if (stdout_read != FOX_INVALID_FD) {
+        if (fds[nfds].revents & POLLIN) {
             result->stdout_ready = true;
+            int avail;
+            if (ioctl(stdout_read, FIONREAD, &avail) == 0)
+                result->stdout_avail = avail;
+        }
         nfds++;
     }
-    if (*(FoxFd *) process->stderr_read != FOX_INVALID_FD) {
-        if (fds[nfds].revents & POLLIN)
+    if (stderr_read != FOX_INVALID_FD) {
+        if (fds[nfds].revents & POLLIN) {
             result->stderr_ready = true;
+            int avail;
+            if (ioctl(stderr_read, FIONREAD, &avail) == 0)
+                result->stderr_avail = avail;
+        }
         nfds++;
     }
     return true;
@@ -3311,15 +3347,19 @@ bool fox_cmd_run_opt(FoxCmd *cmd, FoxCmdOpt opt) {
 #ifndef FOX_NO_ECHO
     fox__log_cmd__(cmd);
 #endif // FOX_NO_ECHO
-    bool ret = fox_cmd_spawn_opt(&process, path, args,
-                                 (FoxSpawnOpt) {.stdin_path = opt.stdin_path,
-                                                .stdout_path = opt.stdout_path,
-                                                .stderr_path = opt.stderr_path,
-                                                .env = &env,
-                                                .working_dir = fox_sv(opt.working_dir)});
-    if (!ret)
+    if (!fox_cmd_spawn_opt(&process, path, args,
+                           (FoxSpawnOpt) {.stdin_path = opt.stdin_path,
+                                          .stdout_path = opt.stdout_path,
+                                          .stderr_path = opt.stderr_path,
+                                          .env = &env,
+                                          .working_dir = fox_sv(opt.working_dir)}))
         fox_return_defer(false);
-    fox_return_defer(fox_cmd_wait(&process));
+    if (!fox_cmd_wait(&process))
+        fox_return_defer(false);
+
+    if (opt.exit_code)
+        *opt.exit_code = process.exit_code;
+    fox_return_defer(true);
 
 defer:
     fox_da_free(&env);
