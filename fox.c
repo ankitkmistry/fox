@@ -1,4 +1,5 @@
 #include "fox.h"
+#include <stdio.h>
 
 typedef struct {
     i8 *items;
@@ -6,9 +7,28 @@ typedef struct {
     size_t capacity;
 } Numbers;
 
-int main(int argc, char *argv[]) {
-    fox_auto_build(argc, argv);
+// int main(int argc, char *argv[]) {
+//     fox_auto_build(argc, argv);
 
+static void visit_dir(FoxDirEntry entry) {
+    if (fox_str_starts_with(entry.name, ".")) {
+        *entry.action = FOX_VISIT_SKIP;
+        return;
+    }
+    if (fox_streq(entry.name, "build") || fox_streq(entry.name, "target")) {
+        *entry.action = FOX_VISIT_SKIP;
+        return;
+    }
+
+    FoxStringBuf buf = fox_sb_from_char(' ', entry.level * 2);
+    if (fox_fs_is_dir(entry.path))
+        printf("%10.3s  %s%s\n", "DIR", buf.items, entry.path);
+    else
+        printf("%10lu  %s%s\n", fox_fs_file_size(entry.path), buf.items, entry.path);
+    fox_sb_free(&buf);
+}
+
+int main(void) {
     Numbers numbers = {0};
     fox_da_append(&numbers, 1);
     fox_da_append(&numbers, 3);
@@ -24,19 +44,26 @@ int main(int argc, char *argv[]) {
         printf("%hhd\n", numbers.items[i]);
     }
 
+    FoxStringBufs files = {0};
+    fox_fs_read_entire_dir(".", &files);
+    fox_da_foreach(FoxStringBuf, file_path, &files) { fox_log_info("File: %s", file_path->items); }
+    fox_str_bufs_free(&files);
+
+    fox_fs_visit_dir("..", visit_dir, .recursive = true);
+
     // fox_log_trace("Log trace");
-    fox_log_debug("Log debug");
-    fox_log_info("Log info");
-    fox_log_warning("Log warning");
-    fox_log_error("Log error");
+    // fox_log_debug("Log debug");
+    // fox_log_info("Log info");
+    // fox_log_warning("Log warning");
+    // fox_log_error("Log error");
     // fox_log_critical("Log critical");
 
-    FoxStringBuf tmp = fox_sb("abracadabra hoola hoo");
-    fox_log_info("tmp: %s", tmp.items);
-    fox_sb_remove_first_str(&tmp, "hoo");
-    fox_log_info("After first removal of hoo");
-    fox_log_info("tmp: %s", tmp.items);
-    fox_sb_free(&tmp);
+    // FoxStringBuf tmp = fox_sb("abracadabra hoola hoo");
+    // fox_log_info("tmp: %s", tmp.items);
+    // fox_sb_remove_first_str(&tmp, "hoo");
+    // fox_log_info("After first removal of hoo");
+    // fox_log_info("tmp: %s", tmp.items);
+    // fox_sb_free(&tmp);
 
     FoxCmd cmd = {0};
 
