@@ -2797,7 +2797,7 @@ bool fox_fs_rename(const char *old_path, const char *new_path) {
         return false;
 
 #if defined(FOX_OS_WINDOWS)
-#    error "Implement this"
+    return MoveFileEx(old_path, new_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);
 #else
     return rename(old_path, new_path) == 0;
 #endif
