@@ -639,12 +639,12 @@ void fox_sb_toupper(FoxStringBuf *sb);
 #define fox_str_trim(str) fox__str_trim__(fox_sv(str))
 
 #define SV_Fmt "%.*s"
-#define SV_Arg(sv) (int) (sv)->size, (sv)->items
+#define SV_Arg(sv) (int) (sv).size, (sv).items
 /// Usage:
 ///   StringView sv = ...;
 ///   printf("sv: "SV_Arg"\n", SV_Arg(sv));
 
-void fox_get_error_message(FoxStringBuf *buf);
+FoxStringView fox_get_error_message(void);
 
 // Log utils
 
@@ -1432,21 +1432,16 @@ FoxStringView fox_sv_from_sb(const FoxStringBuf sb) {
 
 FoxStringView fox_sv_from_sv(FoxStringView sv) { return sv; }
 
-void fox_get_error_message(FoxStringBuf *buf) {
+FoxStringView fox_get_error_message(void) {
 #ifdef FOX_OS_LINUX
-    fox_sb_copy(buf, strerror(errno));
+    return fox_sv(strerror(errno));
 #elif defined(FOX_OS_WINDOWS)
-    fox_da_clear(buf);
-    char err_msg_buf[4096];
+    thread_local static char err_msg_buf[4096];
     DWORD size = FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL, GetLastError(), 0, err_msg_buf,
                                FOX_ARRLEN(err_msg_buf), NULL);
     if (size == 0)
-        fox_sb_appendf(buf, "error code: %lu", GetLastError());
-
-    *buf = fox_sb_from_chars(err_msg_buf, size);
-    FoxStringBuf sb = fox_sb(fox_str_trim(*buf));
-    fox_sb_copy(buf, sb);
-    fox_sb_free(&sb);
+        fox_get_error_message();
+    return fox_sv(err_msg_buf);
 #else
 #    error "Implement this"
 #endif
@@ -3029,15 +3024,15 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
     // Append the program name
     FoxStringView program = fox_sv(path);
     if (fox_str_find_first_of(program, " ") == program.size)
-        fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(&program));
+        fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(program));
     else
-        fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(&program));
+        fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(program));
     // Append the command line args
     fox_da_foreach(FoxStringView, arg, &argv) {
         if (fox_str_find_first_of(*arg, " ") == arg->size)
-            fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(arg));
+            fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(*arg));
         else
-            fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(arg));
+            fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(*arg));
     }
     if (cmd_line.size > 0)
         fox_sb_pop(&cmd_line);
@@ -3276,15 +3271,15 @@ defer:
     // Append the program name
     FoxStringView program = fox_sv(path);
     if (fox_str_find_first_of(program, " ") == program.size)
-        fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(&program));
+        fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(program));
     else
-        fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(&program));
+        fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(program));
     // Append the command line args
     fox_da_foreach(FoxStringView, arg, &argv) {
         if (fox_str_find_first_of(*arg, " ") == arg->size)
-            fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(arg));
+            fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(*arg));
         else
-            fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(arg));
+            fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(*arg));
     }
     if (cmd_line.size > 0)
         fox_sb_pop(&cmd_line);

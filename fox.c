@@ -43,10 +43,8 @@ int main(void) {
     if (fox_fs_remove_all("aboba"))
         fox_log_info("Removed successfully");
     else {
-        FoxStringBuf err = {0};
-        fox_get_error_message(&err);
-        fox_log_error("Error occured: %s", err.items);
-        fox_sb_free(&err);
+        FoxStringView err = fox_get_error_message();
+        fox_log_error("Error occured: " SV_Fmt, SV_Arg(err));
     }
 
     // if (!fox_fs_visit_dir("..", visit_dir, .recursive = true)) {
@@ -84,19 +82,15 @@ int main(void) {
 #else
     fox_cmd_append(&cmd, "gcc", "--version");
     if (!fox_cmd_run(&cmd)) {
-        FoxStringBuf err = {0};
-        fox_get_error_message(&err);
-        fox_log_error("Process creation failed: %s", err.items);
-        fox_sb_free(&err);
+        FoxStringView err = fox_get_error_message();
+        fox_log_error("Error occured: " SV_Fmt, SV_Arg(err));
     }
 #endif
 
     fox_cmd_append(&cmd, "clang", "--version");
     if (!fox_cmd_run(&cmd)) {
-        FoxStringBuf err = {0};
-        fox_get_error_message(&err);
-        fox_log_error("Process creation failed: %s", err.items);
-        fox_sb_free(&err);
+        FoxStringView err = fox_get_error_message();
+        fox_log_error("Error occured: " SV_Fmt, SV_Arg(err));
     }
 
     fox_cmd_free(&cmd);
