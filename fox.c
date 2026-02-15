@@ -11,20 +11,11 @@ typedef struct {
 //     fox_auto_build(argc, argv);
 
 static void visit_dir(FoxDirEntry entry) {
-    if (fox_str_starts_with(entry.name, ".")) {
-        *entry.action = FOX_VISIT_SKIP;
-        return;
-    }
-    if (fox_streq(entry.name, "build") || fox_streq(entry.name, "target")) {
-        *entry.action = FOX_VISIT_SKIP;
-        return;
-    }
-
     FoxStringBuf buf = fox_sb_from_char(' ', entry.level * 2);
     if (fox_fs_is_dir(entry.path))
         printf("%10.3s  %s%s\n", "DIR", buf.items, entry.path);
     else
-        printf("%10lu  %s%s\n", fox_fs_file_size(entry.path), buf.items, entry.path);
+        printf("%10llu  %s%s\n", fox_fs_file_size(entry.path), buf.items, entry.path);
     fox_sb_free(&buf);
 }
 
@@ -49,7 +40,21 @@ int main(void) {
     fox_da_foreach(FoxStringBuf, file_path, &files) { fox_log_info("File: %s", file_path->items); }
     fox_str_bufs_free(&files);
 
-    fox_fs_visit_dir("..", visit_dir, .recursive = true);
+    if (fox_fs_remove_all("aboba"))
+        fox_log_info("Removed successfully");
+    else {
+        FoxStringBuf err = {0};
+        fox_get_error_message(&err);
+        fox_log_error("Error occured: %s", err.items);
+        fox_sb_free(&err);
+    }
+
+    // if (!fox_fs_visit_dir("..", visit_dir, .recursive = true)) {
+    //     FoxStringBuf err = {0};
+    //     fox_get_error_message(&err);
+    //     fox_log_error("Error occured: %s", err.items);
+    //     fox_sb_free(&err);
+    // }
 
     // fox_log_trace("Log trace");
     // fox_log_debug("Log debug");
@@ -77,7 +82,7 @@ int main(void) {
         fox_sb_free(&err);
     }
 #else
-    fox_cmd_append(&cmd, "notepad");
+    fox_cmd_append(&cmd, "gcc", "--version");
     if (!fox_cmd_run(&cmd)) {
         FoxStringBuf err = {0};
         fox_get_error_message(&err);

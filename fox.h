@@ -30,6 +30,8 @@
 // - Implement async cmd execution
 // - Implement log pattern just like spdlog
 // - Log errors wherever necessary (with #ifndef FOX_NO_ECHO)
+// - Document the header file
+// - fox_fs_canonical does not work on Windows
 
 /// General helping utils
 /// - i8
@@ -69,7 +71,6 @@
 /// - fox__str_trim_left__
 /// - fox__str_trim_right__
 /// - fox__str_trim__
-/// - fox__fs_visit_dir__
 /// - fox__cmd_append__
 ///
 /// Dynamic array utils
@@ -216,6 +217,7 @@
 ///   - fox_fs_set_symlink_perms
 ///   - fox_fs_file_type
 ///   - fox_fs_file_size
+///   - fox_fs_set_file_size
 ///
 ///   File Type functions
 ///   - fox_fs_is_block_file
@@ -534,27 +536,27 @@ typedef struct {
     size_t capacity;
 } FoxStringViews;
 
-void fox__sb_copy__(FoxStringBuf *dest, const FoxStringView src);
-size_t fox__str_find_first_of__(const FoxStringView *self, const FoxStringView str);
-size_t fox__str_find_first_not_of__(const FoxStringView *self, const FoxStringView str);
-size_t fox__str_find_last_of__(const FoxStringView *self, const FoxStringView str);
-size_t fox__str_find_last_not_of__(const FoxStringView *self, const FoxStringView str);
-int fox__str_compare__(const FoxStringView left, const FoxStringView right);
-bool fox__str_equals__(const FoxStringView left, const FoxStringView right);
-bool fox__str_starts_with__(const FoxStringView str, const FoxStringView prefix);
-bool fox__str_ends_with__(const FoxStringView str, const FoxStringView suffix);
-bool fox__str_contains__(const FoxStringView *str, const FoxStringView needle);
-FoxStringView fox__str_slice__(const FoxStringView *str, size_t start, size_t end);
-FoxStringViews fox__str_split__(const FoxStringView *str, char delimiter);
-FoxStringView fox__str_trim_left__(const FoxStringView *str);
-FoxStringView fox__str_trim_right__(const FoxStringView *str);
-FoxStringView fox__str_trim__(const FoxStringView *str);
+void fox__sb_copy__(FoxStringBuf *dest, FoxStringView src);
+size_t fox__str_find_first_of__(FoxStringView self, FoxStringView str);
+size_t fox__str_find_first_not_of__(FoxStringView self, FoxStringView str);
+size_t fox__str_find_last_of__(FoxStringView self, FoxStringView str);
+size_t fox__str_find_last_not_of__(FoxStringView self, FoxStringView str);
+int fox__str_compare__(FoxStringView left, FoxStringView right);
+bool fox__str_equals__(FoxStringView left, FoxStringView right);
+bool fox__str_starts_with__(FoxStringView str, FoxStringView prefix);
+bool fox__str_ends_with__(FoxStringView str, FoxStringView suffix);
+bool fox__str_contains__(FoxStringView str, FoxStringView needle);
+FoxStringView fox__str_slice__(FoxStringView str, size_t start, size_t end);
+FoxStringViews fox__str_split__(FoxStringView str, char delimiter);
+FoxStringView fox__str_trim_left__(FoxStringView str);
+FoxStringView fox__str_trim_right__(FoxStringView str);
+FoxStringView fox__str_trim__(FoxStringView str);
 
 // Construction
 FoxStringBuf fox_sb_from_chars(const char *data, size_t count);
 FoxStringBuf fox_sb_from_cstr(const char *str);
 FoxStringBuf fox_sb_from_char(char c, size_t count);
-FoxStringBuf fox_sb_from_sv(const FoxStringView sv);
+FoxStringBuf fox_sb_from_sv(FoxStringView sv);
 FoxStringBuf fox_sb_clone(const FoxStringBuf *sb);
 #define fox_sb_copy(dest, src) fox__sb_copy__((dest), fox_sv(src))
 void fox_sb_free(FoxStringBuf *sb);
@@ -569,7 +571,7 @@ void fox_sb_free(FoxStringBuf *sb);
 FoxStringView fox_sv_from_raw(const char *str, size_t count);
 FoxStringView fox_sv_from_cstr(const char *str);
 FoxStringView fox_sv_from_sb(const FoxStringBuf sb);
-FoxStringView fox_sv_from_sv(const FoxStringView sv);
+FoxStringView fox_sv_from_sv(FoxStringView sv);
 
 #define fox_sv(expr)                                                                                                                                 \
     _Generic((expr), char *: fox_sv_from_cstr, const char *: fox_sv_from_cstr, FoxStringBuf: fox_sv_from_sb, FoxStringView: fox_sv_from_sv)(expr)
@@ -581,7 +583,7 @@ void fox_sb_appendf(FoxStringBuf *sb, const char *fmt, ...) FOX_PRINTF_FORMAT(2,
 void fox_sb_vappendf(FoxStringBuf *sb, const char *fmt, va_list args);
 
 void fox_sb_concat_sb(FoxStringBuf *sb, const FoxStringBuf *other);
-void fox_sb_concat_sv(FoxStringBuf *sb, const FoxStringView other);
+void fox_sb_concat_sv(FoxStringBuf *sb, FoxStringView other);
 void fox_sb_concat_cstr(FoxStringBuf *sb, const char *str);
 void fox_sb_concat_bytes(FoxStringBuf *sb, char *bytes, size_t count);
 #define fox_sb_concat(sb, other)                                                                                                                     \
@@ -611,31 +613,31 @@ void fox_sb_replace_char(FoxStringBuf *sb, char orig, char replace);
         fox_sb_append_null(sb);                                                                                                                      \
     } while (false)
 void fox_sb_remove_first_char(FoxStringBuf *sb, char c);
-void fox_sb_remove_first_sv(FoxStringBuf *sb, const FoxStringView sv);
+void fox_sb_remove_first_sv(FoxStringBuf *sb, FoxStringView sv);
 #define fox_sb_remove_first_str(sb, mat) fox_sb_remove_first_sv((sb), fox_sv(mat))
 void fox_sb_remove_all_char(FoxStringBuf *sb, char c);
-void fox_sb_remove_all_sv(FoxStringBuf *sb, const FoxStringView sv);
+void fox_sb_remove_all_sv(FoxStringBuf *sb, FoxStringView sv);
 #define fox_sb_remove_all_str(sb, mat) fox_sb_remove_all_sv((sb), fox_sv(mat))
 
 void fox_sb_tolower(FoxStringBuf *sb);
 void fox_sb_toupper(FoxStringBuf *sb);
 
-#define fox_str_find_first_of(self, str) fox__str_find_first_of__((const FoxStringView *) (self), fox_sv(str))
-#define fox_str_find_first_not_of(self, str) fox__str_find_first_not_of__((const FoxStringView *) (self), fox_sv(str))
-#define fox_str_find_last_of(self, str) fox__str_find_last_of__((const FoxStringView *) (self), fox_sv(str))
-#define fox_str_find_last_not_of(self, str) fox__str_find_last_not_of__((const FoxStringView *) (self), fox_sv(str))
+#define fox_str_find_first_of(self, str) fox__str_find_first_of__(fox_sv(self), fox_sv(str))
+#define fox_str_find_first_not_of(self, str) fox__str_find_first_not_of__(fox_sv(self), fox_sv(str))
+#define fox_str_find_last_of(self, str) fox__str_find_last_of__(fox_sv(self), fox_sv(str))
+#define fox_str_find_last_not_of(self, str) fox__str_find_last_not_of__(fox_sv(self), fox_sv(str))
 
 #define fox_str_compare(left, right) fox__str_compare__(fox_sv(left), fox_sv(right))
 #define fox_str_equals(left, right) fox__str_equals__(fox_sv(left), fox_sv(right))
 #define fox_streq(left, right) fox__str_equals__(fox_sv(left), fox_sv(right))
 #define fox_str_starts_with(str, prefix) fox__str_starts_with__(fox_sv(str), fox_sv(prefix))
 #define fox_str_ends_with(str, suffix) fox__str_ends_with__(fox_sv(str), fox_sv(suffix))
-#define fox_str_contains(str, suffix) fox__str_contains__((const FoxStringView *) (str), fox_sv(suffix))
-#define fox_str_slice(str, start, end) fox__str_slice__((const FoxStringView *) (str), (start), (end))
-#define fox_str_split(str, delimiter) fox__str_split__((const FoxStringView *) (str), (delimiter));
-#define fox_str_trim_left(str) fox__str_trim_left__((const FoxStringView *) (str))
-#define fox_str_trim_right(str) fox__str_trim_right__((const FoxStringView *) (str))
-#define fox_str_trim(str) fox__str_trim__((const FoxStringView *) (str))
+#define fox_str_contains(str, suffix) fox__str_contains__(fox_sv(str), fox_sv(suffix))
+#define fox_str_slice(str, start, end) fox__str_slice__((str), (start), (end))
+#define fox_str_split(str, delimiter) fox__str_split__(fox_sv(str), (delimiter));
+#define fox_str_trim_left(str) fox__str_trim_left__(fox_sv(str))
+#define fox_str_trim_right(str) fox__str_trim_right__(fox_sv(str))
+#define fox_str_trim(str) fox__str_trim__(fox_sv(str))
 
 #define SV_Fmt "%.*s"
 #define SV_Arg(sv) (int) (sv)->size, (sv)->items
@@ -661,7 +663,7 @@ struct FoxLogSink;
 
 typedef bool (*FoxLogHandlerFn)(struct FoxLogSink *sink, FoxStringBuf *buf, FoxLogLevel level, const char *fmt, const char *path, size_t line,
                                 va_list args);
-typedef void (*FoxSinkWriteFn)(struct FoxLogSink *sink, const FoxStringView sv);
+typedef void (*FoxSinkWriteFn)(struct FoxLogSink *sink, FoxStringView sv);
 typedef void (*FoxSinkCloseFn)(struct FoxLogSink *sink);
 
 typedef struct FoxLogSink {
@@ -703,7 +705,7 @@ void fox_logger_log_ext(FoxLogger *logger, FoxLogLevel level, const char *fmt, c
 
 extern FoxLogger fox_default_logger;
 bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
-void fox_default_log_write(FoxSink *sink, const FoxStringView sv);
+void fox_default_log_write(FoxSink *sink, FoxStringView sv);
 
 void fox_vlog_ext(FoxLogLevel level, const char *fmt, const char *path, size_t line, va_list args);
 #define fox_vlog(level, fmt, args) fox_vlog_ext((level), (fmt), __FILE__, __LINE__, (args))
@@ -719,7 +721,7 @@ void fox_log_ext(FoxLogLevel level, const char *fmt, const char *path, size_t li
 // Filesystem utils
 
 bool fox_fs_read_entire_file(const char *path, FoxStringBuf *sb);
-bool fox_fs_write_entire_file(const char *path, const FoxStringView *sv);
+bool fox_fs_write_entire_file(const char *path, FoxStringView sv);
 bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb);
 bool fox_fs_read_entire_dir(const char *path, FoxStringBufs *files);
 
@@ -731,7 +733,6 @@ typedef enum {
 
 typedef struct {
     const char *path;
-    const char *name;
     size_t level;
     void *arg;
     FoxVisitAction *action;
@@ -742,11 +743,10 @@ typedef void (*FoxVisitFn)(FoxDirEntry entry);
 typedef struct {
     void *arg;
     bool recursive;
-    bool pre_order;
+    bool post_order;
     bool nofollow_dir_symlink;
 } FoxVisitOpt;
 
-bool fox__fs_visit_dir__(const char *path, FoxVisitFn visitor, size_t level, bool *stop, FoxVisitOpt opt);
 bool fox_fs_visit_dir_opt(const char *path, FoxVisitFn visitor, FoxVisitOpt opt);
 #define fox_fs_visit_dir(path, visitor, ...) fox_fs_visit_dir_opt(path, visitor, (FoxVisitOpt) {__VA_ARGS__})
 
@@ -810,6 +810,7 @@ bool fox_fs_get_symlink_perms(const char *path, FoxFilePerms *perms);
 bool fox_fs_set_symlink_perms(const char *path, FoxFilePerms perms);
 FoxFileType fox_fs_file_type(const char *path);
 u64 fox_fs_file_size(const char *path);
+bool fox_fs_set_file_size(const char *path, u64 new_size);
 
 bool fox_fs_is_block_file(const char *path);
 bool fox_fs_is_character_file(const char *path);
@@ -913,7 +914,7 @@ void fox_cmd_detach(FoxProc *process);
 /// process terminates and the process is forcefully terminated.
 bool fox_cmd_kill(FoxProc *process, int value);
 
-bool fox_cmd_write_stdin(FoxProc *process, const FoxStringView data, size_t *written);
+bool fox_cmd_write_stdin(FoxProc *process, FoxStringView data, size_t *written);
 bool fox_cmd_read_stdout(FoxProc *process, void *buf, size_t size, size_t *bytes_read);
 bool fox_cmd_read_stderr(FoxProc *process, void *buf, size_t size, size_t *bytes_read);
 
@@ -1052,27 +1053,33 @@ void fox__rotate_right__(void *v_data, size_t item_size, size_t items_count, siz
     free(tmp);
 }
 
-size_t fox__str_find_first_of__(const FoxStringView *self, const FoxStringView str) {
-    if (!self)
-        return self->size;
+void fox__sb_copy__(FoxStringBuf *dest, FoxStringView src) {
+    if (src.size == 0) {
+        dest->size = 0;
+        return;
+    }
 
-    for (size_t i = 0; i < self->size; ++i) {
-        char c = self->items[i];
+    fox_da_reserve(dest, src.size + 1);
+    dest->size = src.size;
+    memcpy(dest->items, src.items, src.size);
+    dest->items[dest->size] = '\0';
+}
+
+size_t fox__str_find_first_of__(FoxStringView self, FoxStringView str) {
+    for (size_t i = 0; i < self.size; ++i) {
+        char c = self.items[i];
         // Check if current_char is present in the str set
         for (size_t j = 0; j < str.size; ++j) {
             if (c == str.items[j])
                 return i; // Found the first occurrence
         }
     }
-    return self->size;
+    return self.size;
 }
 
-size_t fox__str_find_first_not_of__(const FoxStringView *self, const FoxStringView str) {
-    if (!self)
-        return self->size;
-
-    for (size_t i = 0; i < self->size; ++i) {
-        char c = self->items[i];
+size_t fox__str_find_first_not_of__(FoxStringView self, FoxStringView str) {
+    for (size_t i = 0; i < self.size; ++i) {
+        char c = self.items[i];
         bool found = false;
         // Check if current_char is present in the str set
         for (size_t j = 0; j < str.size; ++j) {
@@ -1084,32 +1091,26 @@ size_t fox__str_find_first_not_of__(const FoxStringView *self, const FoxStringVi
         if (!found)
             return i;
     }
-    return self->size;
+    return self.size;
 }
 
-size_t fox__str_find_last_of__(const FoxStringView *self, const FoxStringView str) {
-    if (!self)
-        return self->size;
-
-    for (size_t index = self->size; index > 0; index--) {
+size_t fox__str_find_last_of__(FoxStringView self, FoxStringView str) {
+    for (size_t index = self.size; index > 0; index--) {
         size_t i = index - 1;
-        char c = self->items[i];
+        char c = self.items[i];
         // Check if current_char is present in the str set
         for (size_t j = 0; j < str.size; ++j) {
             if (c == str.items[j])
                 return i; // Found the last occurrence
         }
     }
-    return self->size;
+    return self.size;
 }
 
-size_t fox__str_find_last_not_of__(const FoxStringView *self, const FoxStringView str) {
-    if (!self)
-        return self->size;
-
-    for (size_t index = self->size; index > 0; index--) {
+size_t fox__str_find_last_not_of__(FoxStringView self, FoxStringView str) {
+    for (size_t index = self.size; index > 0; index--) {
         size_t i = index - 1;
-        char c = self->items[i];
+        char c = self.items[i];
         bool found = false;
         // Check if current_char is present in the str set
         for (size_t j = 0; j < str.size; ++j) {
@@ -1121,10 +1122,10 @@ size_t fox__str_find_last_not_of__(const FoxStringView *self, const FoxStringVie
         if (!found)
             return i;
     }
-    return self->size;
+    return self.size;
 }
 
-int fox__str_compare__(const FoxStringView left, const FoxStringView right) {
+int fox__str_compare__(FoxStringView left, FoxStringView right) {
     // Find the minimum length to compare
     size_t min_size = (left.size < right.size) ? left.size : right.size;
     // Compare characters up to the shorter length
@@ -1139,62 +1140,60 @@ int fox__str_compare__(const FoxStringView left, const FoxStringView right) {
     return 0; // Lengths and contents are identical
 }
 
-bool fox__str_equals__(const FoxStringView left, const FoxStringView right) {
+bool fox__str_equals__(FoxStringView left, FoxStringView right) {
     if (left.size != right.size)
         return false;
     return fox__str_compare__(left, right) == 0;
 }
 
-bool fox__str_starts_with__(const FoxStringView str, const FoxStringView prefix) {
+bool fox__str_starts_with__(FoxStringView str, FoxStringView prefix) {
     if (prefix.size > str.size)
         return false;
     return memcmp(str.items, prefix.items, prefix.size) == 0;
 }
 
-bool fox__str_ends_with__(const FoxStringView str, const FoxStringView suffix) {
+bool fox__str_ends_with__(FoxStringView str, FoxStringView suffix) {
     if (suffix.size > str.size)
         return false;
     return memcmp(&str.items[str.size - suffix.size], suffix.items, suffix.size) == 0;
 }
 
-bool fox__str_contains__(const FoxStringView *str, const FoxStringView needle) {
-    if (!str)
-        return false;
+bool fox__str_contains__(FoxStringView str, FoxStringView needle) {
     // An empty needle is technically contained in any string
     if (needle.size == 0)
         return true;
     // Needle cannot be longer than the haystack
-    if (needle.size > str->size)
+    if (needle.size > str.size)
         return false;
     // Naive search
-    size_t limit = str->size - needle.size;
+    size_t limit = str.size - needle.size;
     for (size_t i = 0; i <= limit; ++i)
-        if (memcmp(str->items + i, needle.items, needle.size) == 0)
+        if (memcmp(str.items + i, needle.items, needle.size) == 0)
             return true;
     return false;
 }
 
-FoxStringView fox__str_slice__(const FoxStringView *str, size_t start, size_t end) {
+FoxStringView fox__str_slice__(FoxStringView str, size_t start, size_t end) {
     if (start >= end)
         return (FoxStringView) {0};
 
-    FOX_ASSERT(start < str->size, "start index is invalid");
-    FOX_ASSERT(end <= str->size, "end index is invalid");
+    FOX_ASSERT(start < str.size, "start index is invalid");
+    FOX_ASSERT(end <= str.size, "end index is invalid");
 
-    if (!str || str->size == 0)
+    if (str.size == 0)
         return (FoxStringView) {0};
     return (FoxStringView) {
-            .items = &str->items[start],
+            .items = &str.items[start],
             .size = end - start,
     };
 }
 
-FoxStringViews fox__str_split__(const FoxStringView *str, char delimiter) {
+FoxStringViews fox__str_split__(FoxStringView str, char delimiter) {
     FoxStringViews result = {0};
     size_t start = 0;
     size_t index = 0;
-    for (; index < str->size; index++) {
-        if (str->items[index] == delimiter) {
+    for (; index < str.size; index++) {
+        if (str.items[index] == delimiter) {
             fox_da_append(&result, fox__str_slice__(str, start, index));
             start = index;
         }
@@ -1204,28 +1203,24 @@ FoxStringViews fox__str_split__(const FoxStringView *str, char delimiter) {
     return result;
 }
 
-FoxStringView fox__str_trim_left__(const FoxStringView *str) {
-    for (size_t i = 0; i < str->size; i++) {
-        if (!isspace(str->items[i]))
-            return fox__str_slice__(str, i, str->size);
+FoxStringView fox__str_trim_left__(FoxStringView str) {
+    for (size_t i = 0; i < str.size; i++) {
+        if (!isspace(str.items[i]))
+            return fox__str_slice__(str, i, str.size);
     }
     return (FoxStringView) {0};
 }
 
-FoxStringView fox__str_trim_right__(const FoxStringView *str) {
-    for (size_t index = str->size; index > 0; index--) {
+FoxStringView fox__str_trim_right__(FoxStringView str) {
+    for (size_t index = str.size; index > 0; index--) {
         size_t i = index - 1;
-        if (!isspace(str->items[i]))
+        if (!isspace(str.items[i]))
             return fox__str_slice__(str, 0, i + 1);
     }
     return (FoxStringView) {0};
 }
 
-FoxStringView fox__str_trim__(const FoxStringView *str) {
-    FoxStringView text = fox__str_trim_left__(str);
-    text = fox__str_trim_right__(&text);
-    return text;
-}
+FoxStringView fox__str_trim__(FoxStringView str) { return fox__str_trim_right__(fox__str_trim_left__(str)); }
 
 FoxStringBuf fox_sb_from_chars(const char *data, size_t count) {
     FoxStringBuf sb = {0};
@@ -1257,7 +1252,7 @@ FoxStringBuf fox_sb_from_char(char c, size_t count) {
     return sb;
 }
 
-FoxStringBuf fox_sb_from_sv(const FoxStringView sv) {
+FoxStringBuf fox_sb_from_sv(FoxStringView sv) {
     FoxStringBuf sb = {0};
     if (sv.size == 0)
         return sb;
@@ -1267,18 +1262,6 @@ FoxStringBuf fox_sb_from_sv(const FoxStringView sv) {
     memcpy(sb.items, sv.items, sb.size);
     sb.items[sb.size] = '\0';
     return sb;
-}
-
-void fox__sb_copy__(FoxStringBuf *dest, const FoxStringView src) {
-    if (src.size == 0) {
-        dest->size = 0;
-        return;
-    }
-
-    fox_da_reserve(dest, src.size + 1);
-    dest->size = src.size;
-    memcpy(dest->items, src.items, src.size);
-    dest->items[dest->size] = '\0';
 }
 
 FoxStringBuf fox_sb_clone(const FoxStringBuf *sb) {
@@ -1332,7 +1315,7 @@ void fox_sb_concat_sb(FoxStringBuf *sb, const FoxStringBuf *other) {
     fox_sb_append_null(sb);
 }
 
-void fox_sb_concat_sv(FoxStringBuf *sb, const FoxStringView other) {
+void fox_sb_concat_sv(FoxStringBuf *sb, FoxStringView other) {
     fox_da_concat(sb, &other);
     fox_sb_append_null(sb);
 }
@@ -1355,11 +1338,11 @@ void fox_sb_replace_char(FoxStringBuf *sb, char orig, char replace) {
 }
 
 void fox_sb_remove_first_char(FoxStringBuf *sb, char c) {
-    size_t index = fox_str_find_first_of(sb, fox_sv_from_raw(&c, 1));
+    size_t index = fox_str_find_first_of(*sb, fox_sv_from_raw(&c, 1));
     fox_sb_remove_at(sb, index);
 }
 
-void fox_sb_remove_first_sv(FoxStringBuf *sb, const FoxStringView sv) {
+void fox_sb_remove_first_sv(FoxStringBuf *sb, FoxStringView sv) {
     if (sb->size < sv.size)
         return;
 
@@ -1397,7 +1380,7 @@ void fox_sb_remove_all_char(FoxStringBuf *sb, char c) {
     fox_sb_free(&tmp);
 }
 
-void fox_sb_remove_all_sv(FoxStringBuf *sb, const FoxStringView sv) {
+void fox_sb_remove_all_sv(FoxStringBuf *sb, FoxStringView sv) {
     if (sb->size < sv.size)
         return;
 
@@ -1449,7 +1432,7 @@ FoxStringView fox_sv_from_sb(const FoxStringBuf sb) {
     };
 }
 
-FoxStringView fox_sv_from_sv(const FoxStringView sv) { return sv; }
+FoxStringView fox_sv_from_sv(FoxStringView sv) { return sv; }
 
 void fox_get_error_message(FoxStringBuf *buf) {
 #ifdef FOX_OS_LINUX
@@ -1463,7 +1446,7 @@ void fox_get_error_message(FoxStringBuf *buf) {
         fox_sb_appendf(buf, "error code: %lu", GetLastError());
 
     *buf = fox_sb_from_chars(err_msg_buf, size);
-    FoxStringBuf sb = fox_sb(fox_str_trim(buf));
+    FoxStringBuf sb = fox_sb(fox_str_trim(*buf));
     fox_sb_copy(buf, sb);
     fox_sb_free(&sb);
 #else
@@ -1606,7 +1589,7 @@ bool fox_default_log_handler(FoxSink *sink, FoxStringBuf *buf, FoxLogLevel level
     return true;
 }
 
-void fox_default_log_write(FoxSink *sink, const FoxStringView sv) {
+void fox_default_log_write(FoxSink *sink, FoxStringView sv) {
     if (sv.size == 0)
         return;
 
@@ -1662,14 +1645,14 @@ defer:
     return result;
 }
 
-bool fox_fs_write_entire_file(const char *path, const FoxStringView *sv) {
+bool fox_fs_write_entire_file(const char *path, FoxStringView sv) {
     bool result;
     // Open the file
     FILE *f = fopen(path, "wb");
     if (f == NULL)
         fox_return_defer(false);
     // Write everything
-    fwrite(sv->items, sizeof(sv->items[0]), sv->size, f);
+    fwrite(sv.items, sizeof(sv.items[0]), sv.size, f);
     if (ferror(f))
         fox_return_defer(false);
     fox_return_defer(true);
@@ -1781,7 +1764,7 @@ static time_t fox__cvt_FILETIME_to_time_t__(FILETIME ft) {
     return (time_t) ((ft_val - EPOCH_DIFF) / 10000000ULL);
 }
 
-bool fox__fs_status__(const char *path, FoxFileStatus *status, bool follow_symlink) {
+static bool fox__fs_status__(const char *path, FoxFileStatus *status, bool follow_symlink) {
     bool result;
 
     // Normally, we only need FILE_READ_ATTRIBUTES access mode. But SMBv1 reports incorrect
@@ -1873,7 +1856,7 @@ defer:
 #endif // FOX_OS_WINDOWS
 
 bool fox_fs_read_symlink(const char *path, FoxStringBuf *sb) {
-    if (!sb || !path || strlen(path) == 0)
+    if (!sb || !path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -1944,37 +1927,41 @@ defer:
 #endif
 }
 
-bool fox_fs_read_entire_dir(const char *path, FoxStringBufs *files) {
-    if (!files || !path || strlen(path) == 0)
-        return false;
-
-#if defined(FOX_OS_LINUX)
-    DIR *dir = opendir(path);
-    if (dir == NULL)
-        return false;
-
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (fox_streq(entry->d_name, ".") || fox_streq(entry->d_name, ".."))
-            continue;
-
-        FoxStringBuf file_path = {0};
-        fox_sb_appendf(&file_path, "%s/%s", path, entry->d_name);
-        fox_da_append(files, file_path);
-    }
-
-    closedir(dir);
-    return true;
-#else
-#    error "Implement this"
-#endif
+static void fox__fs_read_dir_visitor__(FoxDirEntry entry) {
+    FoxStringBufs *files = (FoxStringBufs *) entry.arg;
+    fox_da_append(files, fox_sb(entry.path));
 }
 
-bool fox__fs_visit_dir__(const char *path, FoxVisitFn visitor, size_t level, bool *stop, FoxVisitOpt opt) {
-    if (!visitor || !path || strlen(path) == 0)
+bool fox_fs_read_entire_dir(const char *path, FoxStringBufs *files) {
+    if (!files || !path || *path == '\0')
         return false;
-    if (!fox_fs_is_dir(path))
+
+    if (!fox_fs_visit_dir(path, fox__fs_read_dir_visitor__, .arg = files))
+        return false;
+    return true;
+}
+
+static bool fox__fs_visit_dir__(const char *path, FoxVisitFn visitor, size_t level, bool *stop, FoxVisitOpt opt) {
+    if (!visitor || !path || *path == '\0')
+        return false;
+    if (opt.nofollow_dir_symlink)
+        if (fox_fs_is_dir(path) && fox_fs_is_symlink(path))
+            goto visit_only_one;
+    if (!fox_fs_is_dir(path)) {
+visit_only_one:
+        FoxVisitAction action = FOX_VISIT_CONT;
+        FoxDirEntry dir_entry = {
+                .path = path,
+                .level = level,
+                .arg = opt.arg,
+                .action = &action,
+        };
+        visitor(dir_entry);
+        // Evaluate action
+        if (action == FOX_VISIT_STOP && stop)
+            *stop = true;
         return true;
+    }
 
 #if defined(FOX_OS_LINUX)
     bool result;
@@ -1984,44 +1971,22 @@ bool fox__fs_visit_dir__(const char *path, FoxVisitFn visitor, size_t level, boo
     if (dir == NULL)
         return false;
 
-    struct dirent *entry;
-    while ((entry = readdir(dir)) != NULL) {
-        if (fox_streq(entry->d_name, ".") || fox_streq(entry->d_name, ".."))
-            continue;
-
-        fox_da_clear(&file_path);
-        fox_sb_appendf(&file_path, "%s/%s", path, entry->d_name);
-        // Do not follow symlinks that refer to dirs (if said so)
-        if (opt.nofollow_dir_symlink)
-            if (fox_fs_is_dir(file_path.items) && fox_fs_is_symlink(file_path.items))
-                continue;
-        // Recursive code
-        if (opt.recursive && opt.pre_order) {
-            bool stop = false;
-            if (!fox__fs_visit_dir__(file_path.items, visitor, level + 1, &stop, opt))
-                fox_return_defer(false);
-            if (stop)
-                fox_return_defer(true);
-        }
-        // Visit current entry
+    // Visit directory
+    if (!opt.post_order) {
         FoxVisitAction action = FOX_VISIT_CONT;
         FoxDirEntry dir_entry = {
-                .path = file_path.items,
-                .name = entry->d_name,
+                .path = path,
                 .level = level,
                 .arg = opt.arg,
                 .action = &action,
         };
         visitor(dir_entry);
         // Evaluate action
-        bool skip = false;
         switch (action) {
         case FOX_VISIT_CONT:
-            // Do nothing
-            break;
+            break; // Do nothing
         case FOX_VISIT_SKIP:
-            skip = true;
-            break;
+            fox_return_defer(true);
         case FOX_VISIT_STOP:
             if (stop)
                 *stop = true;
@@ -2029,10 +1994,23 @@ bool fox__fs_visit_dir__(const char *path, FoxVisitFn visitor, size_t level, boo
         default:
             FOX_UNREACHABLE("fox__fs_visit_dir__");
         }
-        if (skip)
+    }
+
+    bool recursion_guard;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (fox_streq(entry->d_name, ".") || fox_streq(entry->d_name, ".."))
             continue;
+        recursion_guard = opt.recursive;
+        // Set up file path
+        fox_da_clear(&file_path);
+        fox_sb_appendf(&file_path, "%s" FOX_FILE_SEPARATOR "%s", path, entry->d_name);
+        // Do not follow symlinks that refer to dirs (if said so)
+        if (opt.nofollow_dir_symlink)
+            if (fox_fs_is_dir(file_path.items) && fox_fs_is_symlink(file_path.items))
+                recursive_guard = false;
         // Recursive code
-        if (opt.recursive && !opt.pre_order) {
+        if (recursive_guard && opt.pre_order) {
             bool stop = false;
             if (!fox__fs_visit_dir__(file_path.items, visitor, level + 1, &stop, opt))
                 fox_return_defer(false);
@@ -2040,10 +2018,134 @@ bool fox__fs_visit_dir__(const char *path, FoxVisitFn visitor, size_t level, boo
                 fox_return_defer(true);
         }
     }
+
+    // Visit directory
+    if (opt.post_order) {
+        FoxVisitAction action = FOX_VISIT_CONT;
+        FoxDirEntry dir_entry = {
+                .path = path,
+                .level = level,
+                .arg = opt.arg,
+                .action = &action,
+        };
+        visitor(dir_entry);
+        // Evaluate action
+        switch (action) {
+        case FOX_VISIT_CONT:
+            break; // Do nothing
+        case FOX_VISIT_SKIP:
+            fox_return_defer(true);
+        case FOX_VISIT_STOP:
+            if (stop)
+                *stop = true;
+            fox_return_defer(true);
+        default:
+            FOX_UNREACHABLE("fox__fs_visit_dir__");
+        }
+    }
     fox_return_defer(true);
 
 defer:
     closedir(dir);
+    fox_da_free(&file_path);
+    return result;
+#elif defined(FOX_OS_WINDOWS)
+    bool result;
+    FoxStringBuf file_path = {0};
+    FoxStringBuf glob = {0};
+    WIN32_FIND_DATA find_data = {0};
+    HANDLE h_find = INVALID_HANDLE_VALUE;
+
+    if (fox_str_ends_with(path, "\\"))
+        fox_sb_appendf(&glob, "%s*", path);
+    else
+        fox_sb_appendf(&glob, "%s\\*", path);
+
+    h_find = FindFirstFile(glob.items, &find_data);
+    if (h_find == INVALID_HANDLE_VALUE) {
+        if (fox_fs_exists(path) && GetLastError() == ERROR_FILE_NOT_FOUND)
+            // No files inside the directory
+            fox_return_defer(true);
+        fox_return_defer(false);
+    }
+
+    // Visit directory
+    if (!opt.post_order) {
+        FoxVisitAction action = FOX_VISIT_CONT;
+        FoxDirEntry dir_entry = {
+                .path = path,
+                .level = level,
+                .arg = opt.arg,
+                .action = &action,
+        };
+        visitor(dir_entry);
+        // Evaluate action
+        switch (action) {
+        case FOX_VISIT_CONT:
+            break; // Do nothing
+        case FOX_VISIT_SKIP:
+            fox_return_defer(true);
+        case FOX_VISIT_STOP:
+            if (stop)
+                *stop = true;
+            fox_return_defer(true);
+        default:
+            FOX_UNREACHABLE("fox__fs_visit_dir__");
+        }
+    }
+
+    bool recursion_guard;
+    do {
+        if (fox_streq(find_data.cFileName, ".") || fox_streq(find_data.cFileName, ".."))
+            continue;
+        recursion_guard = opt.recursive;
+        // Set up the file path
+        fox_da_clear(&file_path);
+        fox_sb_appendf(&file_path, "%s" FOX_FILE_SEPARATOR "%s", path, find_data.cFileName);
+        // Do not follow symlinks that refer to dirs (if said so)
+        if (opt.nofollow_dir_symlink)
+            if (fox_fs_is_dir(file_path.items) && fox_fs_is_symlink(file_path.items))
+                recursion_guard = false;
+        // Recursive code
+        if (recursion_guard && opt.post_order) {
+            bool stop = false;
+            if (!fox__fs_visit_dir__(file_path.items, visitor, level + 1, &stop, opt))
+                fox_return_defer(false);
+            if (stop)
+                fox_return_defer(true);
+        }
+    } while (FindNextFile(h_find, &find_data));
+
+    // Visit directory
+    if (opt.post_order) {
+        FoxVisitAction action = FOX_VISIT_CONT;
+        FoxDirEntry dir_entry = {
+                .path = path,
+                .level = level,
+                .arg = opt.arg,
+                .action = &action,
+        };
+        visitor(dir_entry);
+        // Evaluate action
+        switch (action) {
+        case FOX_VISIT_CONT:
+            break; // Do nothing
+        case FOX_VISIT_SKIP:
+            fox_return_defer(true);
+        case FOX_VISIT_STOP:
+            if (stop)
+                *stop = true;
+            fox_return_defer(true);
+        default:
+            FOX_UNREACHABLE("fox__fs_visit_dir__");
+        }
+    }
+    fox_return_defer(true);
+
+defer:
+    if (h_find != INVALID_HANDLE_VALUE)
+        FindClose(h_find);
+    fox_da_free(&glob);
     fox_da_free(&file_path);
     return result;
 #else
@@ -2075,7 +2177,7 @@ static FoxFileType fox__fs_file_type__(mode_t mode) {
 #endif
 
 bool fox_fs_file_status(const char *path, FoxFileStatus *status) {
-    if (!status || !path || strlen(path) == 0)
+    if (!status || !path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2107,7 +2209,7 @@ bool fox_fs_file_status(const char *path, FoxFileStatus *status) {
 }
 
 bool fox_fs_symlink_status(const char *path, FoxFileStatus *status) {
-    if (!status || !path || strlen(path) == 0)
+    if (!status || !path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2146,8 +2248,41 @@ u64 fox_fs_file_size(const char *path) {
     return 0;
 }
 
+bool fox_fs_set_file_size(const char *path, u64 new_size) {
+    if (!path || *path == '\0')
+        return false;
+    if (!fox_fs_is_regular_file(path))
+        return false;
+
+#if defined(FOX_OS_LINUX)
+    return truncate(path, new_size) == 0;
+#elif defined(FOX_OS_WINDOWS)
+    bool result;
+
+    HANDLE h =
+            CreateFile(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE)
+        return false;
+    // Go to the specified location
+    LARGE_INTEGER sz = {0};
+    sz.QuadPart = new_size;
+    if (!SetFilePointerEx(h, sz, NULL, FILE_BEGIN))
+        fox_return_defer(false);
+    // Set this as the new end of file
+    if (!SetEndOfFile(h))
+        fox_return_defer(false);
+    fox_return_defer(true);
+
+defer:
+    CloseHandle(h);
+    return result;
+#else
+#    error "Implement this"
+#endif
+}
+
 bool fox_fs_set_status(const char *path, const FoxFileStatus status) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2190,7 +2325,7 @@ defer:
 }
 
 bool fox_fs_set_symlink_status(const char *path, const FoxFileStatus status) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2227,7 +2362,7 @@ defer:
 }
 
 bool fox_fs_get_perms(const char *path, FoxFilePerms *perms) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2247,7 +2382,7 @@ bool fox_fs_get_perms(const char *path, FoxFilePerms *perms) {
 }
 
 bool fox_fs_set_perms(const char *path, FoxFilePerms perms) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2264,7 +2399,7 @@ bool fox_fs_set_perms(const char *path, FoxFilePerms perms) {
 }
 
 bool fox_fs_get_symlink_perms(const char *path, FoxFilePerms *perms) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2284,7 +2419,7 @@ bool fox_fs_get_symlink_perms(const char *path, FoxFilePerms *perms) {
 }
 
 bool fox_fs_set_symlink_perms(const char *path, FoxFilePerms perms) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2380,7 +2515,7 @@ FoxStringBuf fox_fs_getcwd(void) {
 }
 
 bool fox_fs_setcwd(const char *path) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2393,7 +2528,7 @@ bool fox_fs_setcwd(const char *path) {
 }
 
 bool fox_fs_exists(const char *path) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2417,9 +2552,9 @@ bool fox_fs_exists(const char *path) {
 }
 
 bool fox_fs_equivalent(const char *path1, const char *path2) {
-    if (!path1 || strlen(path1) == 0)
+    if (!path1 || *path1 == '\0')
         return false;
-    if (!path2 || strlen(path2) == 0)
+    if (!path2 || *path2 == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2509,7 +2644,7 @@ defer:
 }
 
 bool fox_fs_space(const char *path, FoxSpaceInfo *space) {
-    if (!space || !path || strlen(path) == 0)
+    if (!space || !path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2539,7 +2674,7 @@ bool fox_fs_space(const char *path, FoxSpaceInfo *space) {
 };
 
 bool fox_fs_create_dir(const char *path) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2555,7 +2690,7 @@ bool fox_fs_create_dir(const char *path) {
 }
 
 bool fox_fs_create_dir_all(const char *p) {
-    const FoxStringView path = fox_sv(p);
+    FoxStringView path = fox_sv(p);
     if (path.size == 0)
         return false;
     if (fox_fs_exists(p))
@@ -2565,10 +2700,10 @@ bool fox_fs_create_dir_all(const char *p) {
     FoxStringBuf split = {0};
 
     for (size_t i = 0; i < path.size; i++) {
-        path_rem = fox_str_slice(&path, i, path.size);
-        i = i + fox_str_find_first_of(&path_rem, fox_sv(FOX_FILE_SEPARATOR));
+        path_rem = fox_str_slice(path, i, path.size);
+        i = i + fox_str_find_first_of(path_rem, fox_sv(FOX_FILE_SEPARATOR));
 
-        fox_sb_copy(&split, fox_str_slice(&path, 0, i));
+        fox_sb_copy(&split, fox_str_slice(path, 0, i));
         if (split.size == 0)
             continue;
 
@@ -2586,7 +2721,7 @@ bool fox_fs_create_dir_all(const char *p) {
 }
 
 bool fox_fs_create_symlink(const char *target, const char *link) {
-    if (!target || !link || strlen(target) == 0 || strlen(link) == 0)
+    if (!target || !link || *target == '\0' || *link == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2606,26 +2741,60 @@ bool fox_fs_create_symlink(const char *target, const char *link) {
 }
 
 bool fox_fs_remove(const char *path) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
-    if (remove(path) == 0)
-        return true;
-    return false;
+#if defined(FOX_OS_LINUX)
+    // TODO: write your own remove function
+    // as this has a lot of implementation-defined behaviour
+    // which is not portable.
+    return remove(path) == 0;
+#    error "Implement this"
+#elif defined(FOX_OS_WINDOWS)
+    DWORD attrs = GetFileAttributes(path);
+    const bool is_dir = (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
+    const bool is_read_only = (attrs & FILE_ATTRIBUTE_READONLY) != 0;
+    // RemoveDirectory and DeleteFile do not allow to remove if it is read only
+    // So we first remove the read only attribute
+    if (is_read_only) {
+        DWORD new_attrs = attrs & ~FILE_ATTRIBUTE_READONLY;
+        if (!SetFileAttributes(path, new_attrs))
+            return false; // Failed to set read only
+    }
+    // Now remove
+    BOOL res = (is_dir ? RemoveDirectoryA(path) : DeleteFileA(path));
+    if (!res && fox_fs_exists(path) && is_read_only)
+        // Restore the read only flag
+        SetFileAttributes(path, attrs);
+    return res;
+#else
+#    error "Implement this"
+#endif
+}
+
+static void fox__fs_remove_dir_visitor__(FoxDirEntry entry) {
+#ifndef FOX_NO_ECHO
+    if (!fox_fs_remove(entry.path))
+        fox_log_error("[FS] Failed to remove: %s", entry.path);
+#else
+    fox_fs_remove(entry.path);
+#endif
 }
 
 bool fox_fs_remove_all(const char *path) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
+    if (!fox_fs_is_dir(path))
+        return fox_fs_remove(path);
 
-    // TODO: implement this after completing directory visit
-    FOX_UNUSED(path);
-    FOX_TODO("fox_fs_remove_all");
+    if (!fox_fs_visit_dir(path, fox__fs_remove_dir_visitor__, .recursive = true, .post_order = true, .nofollow_dir_symlink = true))
+        return false;
+    return true;
 }
 
 bool fox_fs_rename(const char *old_path, const char *new_path) {
-    if (!old_path || strlen(old_path) == 0)
+    if (!old_path || *old_path == '\0')
         return false;
-    if (!new_path || strlen(new_path) == 0)
+    if (!new_path || *new_path == '\0')
         return false;
 
     if (rename(old_path, new_path) == 0)
@@ -2642,7 +2811,7 @@ static bool fox__fs_copy_file__(const char *from, const char *to) {
     FoxStringBuf sb = {0};
     if (!fox_fs_read_entire_file(from, &sb))
         fox_return_defer(false);
-    if (!fox_fs_write_entire_file(to, (const FoxStringView *) (&sb)))
+    if (!fox_fs_write_entire_file(to, fox_sv(sb)))
         fox_return_defer(false);
     // Copy file attributes
     FoxFileStatus from_status = {0};
@@ -2658,7 +2827,7 @@ defer:
 }
 
 bool fox_fs_copy(const char *from, const char *to, FoxCopyOptions options) {
-    if (!from || !to || strlen(from) == 0 || strlen(to) == 0)
+    if (!from || !to || *from == '\0' || *to == '\0')
         return false;
 
     // TODO: implement this after completing directory visit
@@ -2670,7 +2839,7 @@ bool fox_fs_copy(const char *from, const char *to, FoxCopyOptions options) {
 }
 
 bool fox_fs_copy_file(const char *from, const char *to, FoxCopyOptions options) {
-    if (!from || !to || strlen(from) == 0 || strlen(to) == 0)
+    if (!from || !to || *from == '\0' || *to == '\0')
         return false;
 
     if (!fox_fs_is_regular_file(from))
@@ -2713,8 +2882,9 @@ bool fox_fs_copy_file(const char *from, const char *to, FoxCopyOptions options) 
 }
 
 bool fox_fs_copy_symlink(const char *from, const char *to) {
-    if (!from || !to || strlen(from) == 0 || strlen(to) == 0)
+    if (!from || !to || *from == '\0' || *to == '\0')
         return false;
+
     bool result;
 
     // Copy symlink
@@ -2746,7 +2916,7 @@ bool fox__cmd_set_nonblocking_pipe__posix(FoxFd fd) {
 #endif // FOX_OS_LINUX
 
 bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews argv, const FoxSpawnOpt opt) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -2859,13 +3029,13 @@ bool fox_cmd_spawn_opt(FoxProc *process, const char *path, const FoxStringViews 
     FoxStringBuf cmd_line = {0};
     // Append the program name
     FoxStringView program = fox_sv(path);
-    if (fox_str_find_first_of(&program, " ") == program.size)
+    if (fox_str_find_first_of(program, " ") == program.size)
         fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(&program));
     else
         fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(&program));
     // Append the command line args
     fox_da_foreach(FoxStringView, arg, &argv) {
-        if (fox_str_find_first_of(arg, " ") == arg->size)
+        if (fox_str_find_first_of(*arg, " ") == arg->size)
             fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(arg));
         else
             fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(arg));
@@ -2968,7 +3138,7 @@ defer:
 #endif // FOX_OS_WINDOWS
 
 bool fox_cmd_spawn_piped_opt(FoxProc *process, const char *path, const FoxStringViews argv, const FoxSpawnOpt opt) {
-    if (!path || strlen(path) == 0)
+    if (!path || *path == '\0')
         return false;
 
 #if defined(FOX_OS_LINUX)
@@ -3106,13 +3276,13 @@ defer:
     FoxStringBuf cmd_line = {0};
     // Append the program name
     FoxStringView program = fox_sv(path);
-    if (fox_str_find_first_of(&program, " ") == program.size)
+    if (fox_str_find_first_of(program, " ") == program.size)
         fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(&program));
     else
         fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(&program));
     // Append the command line args
     fox_da_foreach(FoxStringView, arg, &argv) {
-        if (fox_str_find_first_of(arg, " ") == arg->size)
+        if (fox_str_find_first_of(*arg, " ") == arg->size)
             fox_sb_appendf(&cmd_line, "\"" SV_Fmt "\" ", SV_Arg(arg));
         else
             fox_sb_appendf(&cmd_line, SV_Fmt " ", SV_Arg(arg));
@@ -3273,7 +3443,7 @@ defer:
         CloseHandle((HANDLE) process->stderr_read);
         process->stderr_read = NULL;
     }
-    CloseHandle(h);
+    CloseHandle(process->handle);
     process->handle = NULL;
     return true;
 #else
@@ -3309,7 +3479,7 @@ void fox_cmd_detach(FoxProc *process) {
         CloseHandle((HANDLE) process->stdout_read);
     if (process->stderr_read != FOX_INVALID_FD)
         CloseHandle((HANDLE) process->stderr_read);
-    CloseHandle(h);
+    CloseHandle(process->handle);
     *process = (FoxProc) {0};
 #else
 #    error "Implement this"
@@ -3330,7 +3500,7 @@ bool fox_cmd_kill(FoxProc *process, int value) {
 #endif
 }
 
-bool fox_cmd_write_stdin(FoxProc *process, const FoxStringView data, size_t *written) {
+bool fox_cmd_write_stdin(FoxProc *process, FoxStringView data, size_t *written) {
     if (!process)
         return false;
     if (data.size == 0)
@@ -3403,7 +3573,7 @@ static bool fox__cmd_read_fd__(FoxFd fd, void *buf, size_t size, size_t *bytes_r
         *bytes_read = (size_t) n;
     return true;
 #elif defined(FOX_OS_WINDOWS)
-    if (process->stdin_write == FOX_INVALID_FD)
+    if (fd == FOX_INVALID_FD)
         return false;
 
     bool result;
