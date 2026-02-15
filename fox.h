@@ -2008,9 +2008,9 @@ visit_only_one:
         // Do not follow symlinks that refer to dirs (if said so)
         if (opt.nofollow_dir_symlink)
             if (fox_fs_is_dir(file_path.items) && fox_fs_is_symlink(file_path.items))
-                recursive_guard = false;
+                recursion_guard = false;
         // Recursive code
-        if (recursive_guard && opt.pre_order) {
+        if (recursion_guard) {
             bool stop = false;
             if (!fox__fs_visit_dir__(file_path.items, visitor, level + 1, &stop, opt))
                 fox_return_defer(false);
@@ -2107,7 +2107,7 @@ defer:
             if (fox_fs_is_dir(file_path.items) && fox_fs_is_symlink(file_path.items))
                 recursion_guard = false;
         // Recursive code
-        if (recursion_guard && opt.post_order) {
+        if (recursion_guard) {
             bool stop = false;
             if (!fox__fs_visit_dir__(file_path.items, visitor, level + 1, &stop, opt))
                 fox_return_defer(false);
@@ -2157,22 +2157,21 @@ bool fox_fs_visit_dir_opt(const char *path, FoxVisitFn visitor, FoxVisitOpt opt)
 
 #if defined(FOX_OS_LINUX)
 static FoxFileType fox__fs_file_type__(mode_t mode) {
+    if ((mode & 0170000) == 0120000)
+        return FOX_FILE_SYMLINK; // This work only when lstat() is used
     if (S_ISREG(mode))
         return FOX_FILE_REGULAR;
-    else if (S_ISDIR(mode))
+    if (S_ISDIR(mode))
         return FOX_FILE_DIR;
-    else if ((mode & 0170000) == 0120000)
-        return FOX_FILE_SYMLINK; // This work only when lstat() is used
-    else if (S_ISCHR(mode))
+    if (S_ISCHR(mode))
         return FOX_FILE_CHARACTER;
-    else if (S_ISBLK(mode))
+    if (S_ISBLK(mode))
         return FOX_FILE_BLOCK;
-    else if (S_ISFIFO(mode))
+    if (S_ISFIFO(mode))
         return FOX_FILE_PIPE;
-    else if ((mode & 0170000) == 0140000)
+    if ((mode & 0170000) == 0140000)
         return FOX_FILE_SOCKET;
-    else
-        return FOX_FILE_UNKNOWN;
+    return FOX_FILE_UNKNOWN;
 }
 #endif
 
@@ -2744,11 +2743,13 @@ bool fox_fs_remove(const char *path) {
     if (!path || *path == '\0')
         return false;
 #if defined(FOX_OS_LINUX)
-    // TODO: write your own remove function
-    // as this has a lot of implementation-defined behaviour
-    // which is not portable.
-    return remove(path) == 0;
-#    error "Implement this"
+    FoxFileStatus status = {0};
+    if (!fox_fs_symlink_status(path, &status))
+        return false;
+    if (status.type == FOX_FILE_DIR)
+        return rmdir(path) == 0;
+    return unlink(path) == 0;
+
 #elif defined(FOX_OS_WINDOWS)
     DWORD attrs = GetFileAttributes(path);
     const bool is_dir = (attrs & FILE_ATTRIBUTE_DIRECTORY) != 0;
