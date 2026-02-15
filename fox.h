@@ -244,7 +244,6 @@
 ///   - fox_fs_remove
 ///   - fox_fs_remove_all
 ///   - fox_fs_rename
-///   - fox_fs_move
 ///   - FoxCopyOptions
 ///   - fox_fs_copy
 ///   - fox_fs_copy_file
@@ -835,7 +834,6 @@ bool fox_fs_create_symlink(const char *target, const char *link);
 bool fox_fs_remove(const char *path);
 bool fox_fs_remove_all(const char *path);
 bool fox_fs_rename(const char *old_path, const char *new_path);
-bool fox_fs_move(const char *old_path, const char *new_path);
 
 typedef struct {
     unsigned existing  : 2;
@@ -2798,12 +2796,12 @@ bool fox_fs_rename(const char *old_path, const char *new_path) {
     if (!new_path || *new_path == '\0')
         return false;
 
-    if (rename(old_path, new_path) == 0)
-        return true;
-    return false;
+#if defined(FOX_OS_WINDOWS)
+#    error "Implement this"
+#else
+    return rename(old_path, new_path) == 0;
+#endif
 }
-
-bool fox_fs_move(const char *old_path, const char *new_path) { return fox_fs_rename(old_path, new_path); }
 
 static bool fox__fs_copy_file__(const char *from, const char *to) {
     bool result;
